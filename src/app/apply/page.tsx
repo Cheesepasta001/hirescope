@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 const SECTORS = [
@@ -26,10 +26,23 @@ export default function ApplyPage() {
   const [consentInterview, setConsentInterview] = useState(false);
   const [consentRecording, setConsentRecording] = useState(false);
   const [consentLinkCheck, setConsentLinkCheck] = useState(false);
+  const [inviteCode, setInviteCode] = useState("");
+  const [inviteRequired, setInviteRequired] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const ready = file && email.includes("@") && roleTitle.trim() && consentInterview;
+  // Whether a code is needed is a property of the deployment, not the build, so
+  // the field appears only where the operator actually configured one.
+  useEffect(() => {
+    fetch("/api/config")
+      .then((r) => r.json())
+      .then((c) => setInviteRequired(Boolean(c.inviteRequired)))
+      .catch(() => {});
+  }, []);
+
+  const ready =
+    file && email.includes("@") && roleTitle.trim() && consentInterview
+    && (!inviteRequired || inviteCode.trim());
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -46,6 +59,7 @@ export default function ApplyPage() {
     fd.set("consentInterview", String(consentInterview));
     fd.set("consentRecording", String(consentRecording));
     fd.set("consentLinkCheck", String(consentLinkCheck));
+    fd.set("inviteCode", inviteCode.trim());
 
     try {
       const res = await fetch("/api/apply", { method: "POST", body: fd });
@@ -67,6 +81,19 @@ export default function ApplyPage() {
       </p>
 
       <form onSubmit={submit} className="mt-8 space-y-5">
+        {inviteRequired && (
+          <div className="panel p-5">
+            <label className="text-sm font-medium">Invite code</label>
+            <p className="mt-1 text-xs text-[var(--ink-faint)]">
+              This demo runs on the operator&apos;s API account, so it is invite-only.
+            </p>
+            <input
+              className="field mt-3" value={inviteCode} placeholder="Enter your code"
+              onChange={(e) => setInviteCode(e.target.value)}
+            />
+          </div>
+        )}
+
         <label className="block panel p-5 cursor-pointer hover:border-[var(--accent-dim)]">
           <div className="text-sm font-medium">Resume</div>
           <div className="mt-1 text-xs text-[var(--ink-faint)]">PDF, DOCX, or plain text. Max 10MB.</div>

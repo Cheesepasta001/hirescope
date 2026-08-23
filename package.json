@@ -12,7 +12,9 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "typecheck": "tsc --noEmit",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "db:postgres": "node scripts/db-provider.mjs postgres",
+    "db:sqlite": "node scripts/db-provider.mjs sqlite"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",

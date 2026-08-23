@@ -13,19 +13,20 @@ makes manager search worth anything.
 
 ---
 
-## Running it
+## Running it locally
 
 ```bash
-cd hirescope && npm install
+cd hirescope && npm install && cp .env.example .env
 ```
 
-Put an API key in `.env` (copy `.env.example` if it is missing):
+The committed schema targets Postgres, because that is what deploys. For
+zero-setup local dev, switch it to SQLite:
 
-```
-ANTHROPIC_API_KEY=sk-ant-...
+```bash
+npm run db:sqlite
 ```
 
-Then:
+then set `DATABASE_URL="file:./dev.db"` and your `ANTHROPIC_API_KEY` in `.env`, and:
 
 ```bash
 npm run db:push && npm run db:seed && npm run dev
@@ -35,6 +36,9 @@ Open http://localhost:3000. The seed adds six invented candidates so manager
 search has something to return without spending any API calls.
 
 Manager passcode is `MANAGER_PASSCODE` in `.env`, default `letmein`.
+
+`npm run db:postgres` switches back. The provider is the one setting Prisma will
+not read from an env var, which is why it needs a script rather than config.
 
 ### Try it
 
@@ -139,6 +143,57 @@ like a bug.
 
 ---
 
+## Deploying a shareable link
+
+Hosted on a persistent container rather than serverless functions, because this
+app's requests are long: resume upload makes two Opus 5 calls back to back, and
+the assessment runs at high effort over a full transcript. Serverless per-request
+timeouts are the wrong shape for that — Vercel's Hobby tier caps a function at
+60s, which upload will exceed on a real resume.
+
+**1. A Postgres database.** [Neon](https://neon.tech) has a free tier. Create a
+project and copy the connection string.
+
+**2. Deploy.** `render.yaml` in the repo root is a Render blueprint — in the
+Render dashboard choose New → Blueprint and point it at this repo. It builds,
+pushes the schema, and starts the server. Railway and Fly.io work the same way
+from the same `package.json` scripts.
+
+**3. Set these in the host's environment settings**, never in a committed file:
+
+| Variable | Purpose |
+|---|---|
+| `ANTHROPIC_API_KEY` | Your key. Every visitor's interview is billed to it. |
+| `DATABASE_URL` | The Postgres connection string. |
+| `MANAGER_PASSCODE` | Gates manager search and candidate reports. |
+| `INVITE_CODES` | Comma-separated codes required to start an interview. |
+| `MAX_INTERVIEWS_PER_DAY` | Hard ceiling, resets midnight UTC. |
+
+### Spend controls
+
+A public ungated link is unbounded spend on your account — one full interview is
+roughly a dollar or two of Opus 5, and nothing stops a visitor starting a hundred.
+Three independent limits, in `src/lib/gate.ts`:
+
+- **Invite codes.** Checked before any parsing, model call, or database write.
+  Unset `INVITE_CODES` leaves the demo open; the candidate form only shows the
+  field where codes are actually configured.
+- **Daily cap.** Counts interviews *started*, not completed — an abandoned
+  interview still spent the extraction and planning calls.
+- **Per-interview turn ceiling.** The engine is meant to wind down on its own,
+  but intent is not a spend control, so turns hard-stop past the budget.
+
+None of this is authentication. It is spend control for a demo; real auth is
+still the open item in `/governance`.
+
+### Free-tier caveat
+
+Render's free instances sleep when idle, so the first visit after a quiet period
+waits through a cold start. Fine for a demo link, wrong for anything you want to
+feel responsive.
+
+---
+
 ## Layout
 
 ```
@@ -171,14 +226,7 @@ stops the model inventing values to fill a slot.
 
 ---
 
-## Moving to Postgres
-
-The schema is written to be portable — no SQLite-only types, and embeddings are
-stored as JSON text rather than a `pgvector` column.
-
-1. In `prisma/schema.prisma`, set `provider = "postgresql"`.
-2. Point `DATABASE_URL` at your instance.
-3. `npm run db:push`
+## Scaling search
 
 Cosine similarity currently runs in-process over every profile
 (`src/lib/search/query.ts`), which is fine into the low thousands of candidates.

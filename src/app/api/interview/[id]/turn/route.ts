@@ -6,6 +6,7 @@ import type { InterviewPlan } from "@/lib/interview/plan";
 import type { ExtractedResume } from "@/lib/resume/schema";
 import type { SectorId } from "@/lib/interview/sectors";
 import { screenAnswer } from "@/lib/integrity/stylometry";
+import { MAX_TURNS_OVER_BUDGET } from "@/lib/gate";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -79,6 +80,15 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
 
     const questionsAsked = interview.turns.filter((t) => t.role === "interviewer").length;
     const budgetExhausted = questionsAsked >= plan.questionBudget;
+
+    // The engine is meant to wind down on its own, but intent is not a spend
+    // control. Past the budget plus a small margin, stop generating regardless.
+    if (questionsAsked >= plan.questionBudget + MAX_TURNS_OVER_BUDGET) {
+      return NextResponse.json(
+        { error: "This interview has reached its question limit. Finish it to see your assessment." },
+        { status: 409 },
+      );
+    }
 
     // Focus-loss counts are visible to the engine only as a nudge to probe more
     // deeply. They must never reach the scorer, which is why this string goes in

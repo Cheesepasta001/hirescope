@@ -6,6 +6,7 @@ import { extractResume } from "@/lib/resume/extract";
 import { checkConsistency } from "@/lib/verify/consistency";
 import { checkLinks } from "@/lib/verify/links";
 import { buildPlan } from "@/lib/interview/plan";
+import { checkInviteCode, checkDailyCap } from "@/lib/gate";
 import type { SectorId } from "@/lib/interview/sectors";
 
 export const runtime = "nodejs";
@@ -24,6 +25,14 @@ const POLICY_VERSION = "2026-08-23";
 export async function POST(request: Request) {
   try {
     const form = await request.formData();
+
+    // Spend controls run before anything expensive: no PDF parsing, no model
+    // calls, no database writes until the caller is allowed to be here.
+    const invite = checkInviteCode(String(form.get("inviteCode") ?? ""));
+    if (!invite.ok) return NextResponse.json({ error: invite.message }, { status: invite.status });
+
+    const cap = await checkDailyCap();
+    if (!cap.ok) return NextResponse.json({ error: cap.message }, { status: cap.status });
 
     const file = form.get("resume");
     if (!(file instanceof File)) {

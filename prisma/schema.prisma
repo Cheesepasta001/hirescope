@@ -1,15 +1,19 @@
-// Dev runs on SQLite so the project starts with zero setup.
-// To move to Postgres: change provider to "postgresql", point DATABASE_URL at
-// your instance, and run `prisma db push`. Every model below is written to be
-// portable — no SQLite-only types, and vectors are stored as JSON text rather
-// than a pgvector column so the same schema works on both. See README.
+// The provider below is the one thing Prisma will not read from an env var, so
+// it is flipped by script rather than by configuration:
+//
+//   npm run db:postgres   # what deploys (Neon, Render, Supabase, any Postgres)
+//   npm run db:sqlite     # zero-setup local dev, works offline
+//
+// Every model is written to be portable across both — no provider-specific
+// types, and embeddings are stored as JSON text rather than a pgvector column.
+// See README for the pgvector migration once the corpus outgrows in-app ranking.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
