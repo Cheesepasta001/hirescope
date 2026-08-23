@@ -9,7 +9,16 @@ services:
     name: hirescope
     runtime: node
     plan: free # free instances sleep when idle; first hit after a nap is slow
-    buildCommand: npm install && npm run build && npx prisma db push --accept-data-loss
+
+    # --include=dev is load-bearing. prisma, tsx, typescript, and tailwind are
+    # all devDependencies and all are needed at BUILD time, so a host that sets
+    # NODE_ENV=production would otherwise skip them and fail the build.
+    buildCommand: >-
+      npm install --include=dev &&
+      npm run build &&
+      npx prisma db push --accept-data-loss &&
+      npm run db:seed:optional
+
     startCommand: npm run start
     healthCheckPath: /
     envVars:
@@ -23,5 +32,10 @@ services:
         sync: false # comma-separated; omit to leave the demo ungated
       - key: MAX_INTERVIEWS_PER_DAY
         value: "15"
+      # Seeds six invented candidates so manager search has something to return
+      # on a fresh database. Idempotent (upserts), so it is safe on redeploy.
+      # Set to "false" once real candidates exist.
+      - key: SEED_DEMO_DATA
+        value: "true"
       - key: NODE_VERSION
         value: "22"
