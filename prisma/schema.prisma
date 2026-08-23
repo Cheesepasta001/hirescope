@@ -1,0 +1,209 @@
+// Dev runs on SQLite so the project starts with zero setup.
+// To move to Postgres: change provider to "postgresql", point DATABASE_URL at
+// your instance, and run `prisma db push`. Every model below is written to be
+// portable — no SQLite-only types, and vectors are stored as JSON text rather
+// than a pgvector column so the same schema works on both. See README.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Candidate {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  phone     String?
+  location  String?
+  createdAt DateTime @default(now())
+
+  // Consent is per-purpose and recorded with a timestamp, because "did this
+  // person agree to X" has to be answerable months later during an audit.
+  consentInterview   Boolean   @default(false)
+  consentRecording   Boolean   @default(false)
+  consentLinkCheck   Boolean   @default(false)
+  consentedAt        DateTime?
+  consentPolicyVer   String? // which privacy text they actually saw
+
+  resumes     Resume[]
+  interviews  Interview[]
+  tags        CandidateTag[]
+  profile     CandidateProfile?
+}
+
+model Resume {
+  id          String   @id @default(cuid())
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  filename    String
+  mimeType    String
+  rawText     String
+  // ExtractedResume (see src/lib/resume/schema.ts) serialised as JSON.
+  extracted   String
+  createdAt   DateTime @default(now())
+
+  interviews  Interview[]
+  findings    VerificationFinding[]
+}
+
+// Internal-consistency and candidate-supplied-link checks. Deliberately NOT
+// third-party background-check data: producing that for a hiring decision makes
+// you a consumer reporting agency under FCRA.
+model VerificationFinding {
+  id        String   @id @default(cuid())
+  resumeId  String
+  resume    Resume   @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+
+  kind      String // timeline_gap | overlap | title_inflation | unverified_claim | link_ok | link_mismatch | credential_unconfirmed
+  severity  String // info | low | medium | high
+  field     String? // which resume field it concerns
+  detail    String
+  evidence  String? // JSON
+  // Candidates get to see and rebut findings before a decision is made.
+  candidateVisible Boolean @default(true)
+  candidateResponse String?
+  createdAt DateTime @default(now())
+}
+
+model Interview {
+  id          String   @id @default(cuid())
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  resumeId    String
+  resume      Resume   @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+
+  sector      String // engineering | finance | hr | sales | product | healthcare | legal | operations
+  roleTitle   String
+  seniority   String // junior | mid | senior | lead
+
+  status      String   @default("in_progress") // in_progress | completed | abandoned
+  // InterviewPlan JSON: the competencies to cover and resume claims to probe.
+  plan        String
+  startedAt   DateTime @default(now())
+  completedAt DateTime?
+
+  turns           Turn[]
+  integrityEvents IntegrityEvent[]
+  assessment      Assessment?
+}
+
+model Turn {
+  id          String   @id @default(cuid())
+  interviewId String
+  interview   Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  idx         Int
+  role        String // interviewer | candidate
+  text        String
+
+  // Which competency this question targets, and how deep the follow-up chain is.
+  competency  String?
+  questionType String? // resume_probe | behavioral | technical | logical | communication | hr_general | closing
+  probeDepth  Int      @default(0)
+
+  // Answer-side telemetry, used by the integrity model. All non-biometric.
+  latencyMsFirstKey Int?
+  latencyMsSubmit   Int?
+  charCount         Int?
+
+  // Set on candidate turns only: the engine appraises each answer at the moment
+  // it decides the next question, and the final assessment reuses those rather
+  // than re-reading the whole transcript from scratch.
+  appraisal   String?
+  // Stylometry result, present only on the rare answers that tripped the screen.
+  stylometry  String?
+
+  createdAt   DateTime @default(now())
+
+  @@unique([interviewId, idx])
+}
+
+// Non-biometric integrity signals only. No face, gaze, or emotion inference:
+// emotion recognition in an employment context is prohibited under EU AI Act
+// Art. 5(1)(f), and face/eye biometrics trigger Illinois BIPA and Texas CUBI.
+model IntegrityEvent {
+  id          String   @id @default(cuid())
+  interviewId String
+  interview   Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  type        String // blur | focus | paste | copy | fullscreen_exit | second_voice | devtools | tab_hidden
+  payload     String? // JSON
+  at          DateTime @default(now())
+}
+
+model Assessment {
+  id          String   @id @default(cuid())
+  interviewId String   @unique
+  interview   Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  overallScore   Int // 0-100
+  recommendation String // strong_yes | yes | leaning_yes | no | insufficient_evidence
+  summary        String
+
+  // CompetencyScore[] JSON — the skill diagram is rendered straight from this.
+  competencies   String
+  strengths      String // JSON string[]
+  concerns       String // JSON string[]
+
+  // IntegrityReport JSON. Signals + a plain-language read, never a verdict.
+  integrity      String
+  // Where the interview contradicted or failed to support the resume.
+  resumeDeltas   String // JSON
+
+  createdAt      DateTime @default(now())
+}
+
+// Denormalised, searchable rollup. One row per candidate, rebuilt after each
+// completed interview, so manager search never has to join across interviews.
+model CandidateProfile {
+  id          String   @id @default(cuid())
+  candidateId String   @unique
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  headline       String
+  sector         String
+  seniority      String
+  yearsExperience Float
+  overallScore   Int
+  recommendation String
+  summary        String
+
+  // Free-text blob that the embedding is computed over.
+  searchText     String
+  // JSON number[] — cosine similarity is computed in-app. Swap for a pgvector
+  // column when you outgrow a few thousand candidates (see README).
+  embedding      String
+  competencies   String // CompetencyScore[] JSON, copied from the latest assessment
+
+  updatedAt      DateTime @updatedAt
+}
+
+model Tag {
+  id     String @id @default(cuid())
+  label  String @unique
+  // skill | tool | domain | soft | sector | credential
+  kind   String
+  candidates CandidateTag[]
+}
+
+model CandidateTag {
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  tagId       String
+  tag         Tag       @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  // 0-1. How well the interview actually supported this tag, as opposed to the
+  // resume merely asserting it. This is the number that makes search useful.
+  confidence  Float
+  // claimed | demonstrated | contradicted
+  status      String  @default("claimed")
+  evidence    String? // the answer excerpt that justified it
+
+  @@id([candidateId, tagId])
+  @@index([tagId])
+}
