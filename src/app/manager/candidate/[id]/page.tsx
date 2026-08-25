@@ -69,7 +69,10 @@ export default function CandidateReport({ params }: { params: Promise<{ id: stri
 
   return (
     <div className="space-y-8">
-      <Link href="/manager" className="text-sm text-[var(--accent)]">← Back to search</Link>
+      <div className="flex flex-wrap items-center gap-4 text-sm">
+        <Link href="/manager/candidates" className="text-[var(--accent)]">← All candidates</Link>
+        <Link href="/manager" className="text-[var(--ink-faint)] hover:text-[var(--ink)]">Search</Link>
+      </div>
 
       <header className="flex flex-wrap items-start justify-between gap-6">
         <div>
