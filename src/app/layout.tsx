@@ -18,7 +18,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </Link>
             <nav className="flex gap-5 text-sm text-[var(--ink-dim)]">
               <Link href="/apply" className="hover:text-[var(--ink)]">Candidate</Link>
-              <Link href="/manager" className="hover:text-[var(--ink)]">Manager</Link>
+              <Link href="/manager" className="hover:text-[var(--ink)]">Search</Link>
+              <Link href="/manager/candidates" className="hover:text-[var(--ink)]">Candidates</Link>
               <Link href="/governance" className="hover:text-[var(--ink)]">Governance</Link>
             </nav>
           </div>

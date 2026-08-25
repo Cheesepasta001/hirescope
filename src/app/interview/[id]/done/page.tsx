@@ -1,6 +1,7 @@
 "use client";
 
 import { use, useEffect, useState } from "react";
+import Link from "next/link";
 import { SkillRadar, type RadarPoint } from "@/components/SkillRadar";
 
 type Report = {
@@ -10,11 +11,18 @@ type Report = {
   overallScore: number;
   recommendation: string;
   summary: string;
+  scoreExplanation: string;
   competencies: RadarPoint[];
   strengths: string[];
   concerns: string[];
   findings: { id: string; kind: string; severity: string; detail: string; response: string | null }[];
   integrity: { band: string; observations: string[]; caveat: string } | null;
+  homework: {
+    generated: boolean;
+    estimatedMinutes: number | null;
+    competencyCount: number;
+    submitted: boolean;
+  } | null;
 };
 
 export default function DonePage({ params }: { params: Promise<{ id: string }> }) {
@@ -74,10 +82,50 @@ export default function DonePage({ params }: { params: Promise<{ id: string }> }
       <section className="panel p-6">
         <div className="flex items-baseline justify-between">
           <h2 className="font-medium">{report.roleTitle}</h2>
-          <span className="text-3xl font-semibold tabular-nums">{report.overallScore}</span>
+          <span className="text-3xl font-semibold tabular-nums">
+            {report.overallScore}
+            <span className="text-base text-[var(--ink-faint)]">/100</span>
+          </span>
         </div>
         <p className="mt-3 leading-relaxed text-[var(--ink-dim)]">{report.summary}</p>
+        {report.scoreExplanation && (
+          <p className="mt-3 border-t border-[var(--border)] pt-3 text-xs text-[var(--ink-faint)] leading-relaxed">
+            {report.scoreExplanation} A person makes the decision; this score does not.
+          </p>
+        )}
       </section>
+
+      {/* Offered rather than demanded. The task exists to give the candidate a
+          chance to show competencies the conversation missed, so pressuring
+          them into it would defeat the point. */}
+      {report.homework && (
+        <section className="panel border-[var(--accent-dim)] p-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 className="font-medium">
+                {report.homework.submitted ? "Your practical task" : "One more thing, if you want it"}
+              </h2>
+              <p className="mt-1.5 text-sm text-[var(--ink-dim)] max-w-xl leading-relaxed">
+                {report.homework.submitted
+                  ? "You completed the practical task. Its results are included in the scores above."
+                  : `A short practical task — `
+                    + (report.homework.estimatedMinutes
+                      ? `about ${report.homework.estimatedMinutes} minutes — `
+                      : "under an hour — ")
+                    + `covering ${report.homework.competencyCount} `
+                    + `${report.homework.competencyCount === 1 ? "competency" : "competencies"} `
+                    + `the interview did not get far into. It can only add to the evidence behind `
+                    + `your assessment.`}
+              </p>
+            </div>
+            {!report.homework.submitted && (
+              <Link href={`/interview/${id}/homework`} className="btn shrink-0">
+                Open the task
+              </Link>
+            )}
+          </div>
+        </section>
+      )}
 
       <section className="panel p-5">
         <h2 className="text-sm font-medium mb-2">Your skill diagram</h2>

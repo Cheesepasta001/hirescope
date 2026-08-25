@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
-import { claude, MODEL, EFFORT } from "@/lib/claude";
+import { claude, MODEL, EFFORT, parseWithRetry } from "@/lib/claude";
 import type { ExtractedResume } from "@/lib/resume/schema";
-import { competenciesFor, type SectorId } from "./sectors";
-import type { InterviewPlan } from "./plan";
+import { renderCompetencyDefinitions } from "./sectors";
+import { planCompetencies, type InterviewPlan } from "./plan";
 
 /**
  * The adaptive loop.
@@ -81,31 +81,29 @@ export type CoverageState = {
   label: string;
   target: number;
   asked: number;
-  bestDepth: string;
 };
 
 /** Deterministic coverage accounting, so the model does not have to count. */
 export function computeCoverage(plan: InterviewPlan, turns: TurnRecord[]): CoverageState[] {
-  return plan.targets.map((t) => {
-    const asked = turns.filter(
+  return plan.targets.map((t) => ({
+    competencyId: t.competencyId,
+    label: t.label,
+    target: t.targetQuestions,
+    asked: turns.filter(
       (turn) => turn.role === "interviewer" && turn.competency === t.competencyId,
-    ).length;
-    return {
-      competencyId: t.competencyId,
-      label: t.label,
-      target: t.targetQuestions,
-      asked,
-      bestDepth: "unknown",
-    };
-  });
+    ).length,
+  }));
 }
 
-function buildSystemPrompt(
-  plan: InterviewPlan,
-  resume: ExtractedResume,
-  sector: SectorId,
-): string {
-  const competencies = competenciesFor(sector);
+/** Competency keys the interview never asked about. Drives the "unreached" reporting. */
+export function unreachedCompetencies(plan: InterviewPlan, turns: TurnRecord[]): string[] {
+  return computeCoverage(plan, turns)
+    .filter((c) => c.asked === 0)
+    .map((c) => c.competencyId);
+}
+
+function buildSystemPrompt(plan: InterviewPlan, resume: ExtractedResume): string {
+  const competencies = planCompetencies(plan);
 
   return `You are conducting a structured job interview for a ${plan.seniority} ${plan.roleTitle} role.
 
@@ -155,9 +153,12 @@ Quote the actual evidence — a score with no quotable basis is not a score.
 
 ## Competency definitions
 
-${competencies
-  .map((c) => `### ${c.id} — ${c.label}\nStrong: ${c.probes}\nWeak: ${c.weakSignals}`)
-  .join("\n\n")}
+These are the company's own hiring standard for this role, written by their HR
+team. They are the whole list — do not assess anything outside it, and do not
+invent a competency you think is missing. Every question you ask must target one
+of the ids below.
+
+${renderCompetencyDefinitions(competencies)}
 
 ## This interview's plan
 
@@ -201,12 +202,11 @@ ${JSON.stringify(
 export async function nextTurn(args: {
   plan: InterviewPlan;
   resume: ExtractedResume;
-  sector: SectorId;
   turns: TurnRecord[];
   /** Integrity signals observed so far, summarised. Influences probing, never scoring. */
   integrityNote?: string;
 }): Promise<NextTurn> {
-  const { plan, resume, sector, turns, integrityNote } = args;
+  const { plan, resume, turns, integrityNote } = args;
 
   const coverage = computeCoverage(plan, turns);
   const questionsAsked = turns.filter((t) => t.role === "interviewer").length;
@@ -233,34 +233,50 @@ export async function nextTurn(args: {
     + (integrityNote ? `\nSession note (context only — must not affect the score): ${integrityNote}\n` : "")
     + `</interview_state>`;
 
-  const response = await claude.messages.parse({
-    model: MODEL,
-    max_tokens: 8000,
-    system: [
-      {
-        type: "text",
-        text: buildSystemPrompt(plan, resume, sector),
-        cache_control: { type: "ephemeral" },
-      },
-    ],
-    thinking: { type: "adaptive" },
-    output_config: { effort: EFFORT.interviewTurn, format: zodOutputFormat(NextTurnSchema) },
-    messages:
-      conversation.length === 0
-        ? [{ role: "user", content: `${stateBlock}\n\nBegin the interview.` }]
-        : [
-            // The transcript opens with the interviewer's first question, but the
-            // API requires messages[0] to be a user turn. This fixed opener
-            // supplies one and is byte-stable across turns, so it does not
-            // disturb the cached prefix.
-            { role: "user" as const, content: "Begin the interview." },
-            ...conversation,
-            { role: "user" as const, content: stateBlock },
-          ],
-  });
+  const response = await parseWithRetry(() =>
+    claude.messages.parse({
+      model: MODEL,
+      max_tokens: 8000,
+      system: [
+        {
+          type: "text",
+          text: buildSystemPrompt(plan, resume),
+          cache_control: { type: "ephemeral" },
+        },
+      ],
+      thinking: { type: "adaptive" },
+      output_config: { effort: EFFORT.interviewTurn, format: zodOutputFormat(NextTurnSchema) },
+      messages:
+        conversation.length === 0
+          ? [{ role: "user", content: `${stateBlock}\n\nBegin the interview.` }]
+          : [
+              // The transcript opens with the interviewer's first question, but the
+              // API requires messages[0] to be a user turn. This fixed opener
+              // supplies one and is byte-stable across turns, so it does not
+              // disturb the cached prefix.
+              { role: "user" as const, content: "Begin the interview." },
+              ...conversation,
+              { role: "user" as const, content: stateBlock },
+            ],
+    }),
+  );
 
   if (!response.parsed_output) {
     throw new Error("The interview engine returned an unreadable turn. Retry the request.");
   }
-  return response.parsed_output;
+
+  // A question tagged with a competency the criteria file does not define would
+  // record a score against a key nothing can interpret. Reassign it to the
+  // competency furthest from its target instead of storing an orphan.
+  const turn = response.parsed_output;
+  const validIds = new Set(plan.targets.map((t) => t.competencyId));
+  if (!validIds.has(turn.question.competencyId)) {
+    const behind = [...coverage].sort((a, b) => a.asked - b.asked || a.target - b.target)[0];
+    turn.question.competencyId = behind?.competencyId ?? plan.targets[0]?.competencyId ?? "";
+  }
+  if (turn.appraisal.competencyId && !validIds.has(turn.appraisal.competencyId)) {
+    turn.appraisal.competencyId = "";
+  }
+
+  return turn;
 }

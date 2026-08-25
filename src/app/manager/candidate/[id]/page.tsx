@@ -2,20 +2,34 @@
 
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
-import { SkillRadar, type RadarPoint } from "@/components/SkillRadar";
+import { SkillRadar, round, RADAR_MAX, type RadarPoint } from "@/components/SkillRadar";
+import { CandidateCard, recommendationLabel, recommendationColor } from "@/components/CandidateCard";
 
 type Report = {
   candidate: {
-    id: string; name: string; email: string; location: string | null;
+    id: string; name: string; email: string; phone: string | null; location: string | null;
     headline: string; yearsExperience: number;
     consent: { interview: boolean; recording: boolean; linkCheck: boolean; at: string | null; policyVersion: string | null };
   };
-  interview: { roleTitle: string; sector: string; seniority: string; completedAt: string | null; questionCount: number };
+  interview: { id: string; roleTitle: string; roleSlug: string | null; sector: string; seniority: string; completedAt: string | null; questionCount: number };
+  criteria: {
+    roleSlug: string; roleTitle: string; version: number;
+    sourcePath: string; parsedAt: string; competencyCount: number;
+  } | null;
   assessment: {
     overallScore: number; recommendation: string; summary: string;
+    competenciesCounted: number; competenciesTotal: number; scoreExplanation: string;
     competencies: RadarPoint[]; strengths: string[]; concerns: string[];
     resumeDeltas: { claim: string; direction: string; detail: string }[];
   };
+  homework: {
+    title: string; brief: string; rationale: string;
+    estimatedMinutes: number; targetKeys: string[]; createdAt: string;
+    submission: {
+      text: string; submittedAt: string; gradedAt: string | null;
+      graderNote: string | null; pasteCount: number;
+    } | null;
+  } | null;
   integrity: {
     anomalyScore: number; band: string;
     observations: { label: string; detail: string; weight: number }[];
@@ -56,14 +70,24 @@ export default function CandidateReport({ params }: { params: Promise<{ id: stri
   }
   if (!report) return <p className="text-sm text-[var(--ink-dim)]">Loading report…</p>;
 
-  const { candidate, interview, assessment, integrity, tags, verification, transcript } = report;
+  const { candidate, interview, criteria, assessment, homework, integrity, tags, verification, transcript } = report;
   const demonstrated = tags.filter((t) => t.status === "demonstrated");
   const claimed = tags.filter((t) => t.status === "claimed");
   const contradicted = tags.filter((t) => t.status === "contradicted");
 
   return (
     <div className="space-y-8">
-      <Link href="/manager" className="text-sm text-[var(--accent)]">← Back to search</Link>
+      <div className="flex flex-wrap items-center gap-4 text-sm">
+        <Link href="/manager/candidates" className="text-[var(--accent)]">← All candidates</Link>
+        <Link href="/manager" className="text-[var(--ink-faint)] hover:text-[var(--ink)]">Search</Link>
+        {/* The record of what was asked, said, and applied — for the hiring file. */}
+        <a
+          href={`/api/interview/${interview.id}/export`}
+          className="ml-auto text-[var(--accent)]"
+        >
+          Download the record (.md)
+        </a>
+      </div>
 
       <header className="flex flex-wrap items-start justify-between gap-6">
         <div>
@@ -71,17 +95,43 @@ export default function CandidateReport({ params }: { params: Promise<{ id: stri
           <p className="mt-1 text-[var(--ink-dim)]">{candidate.headline}</p>
           <div className="mt-3 flex flex-wrap gap-1.5">
             <span className="chip">{interview.seniority} {interview.roleTitle}</span>
-            <span className="chip">{candidate.yearsExperience} yrs</span>
+            <span className="chip">{round(candidate.yearsExperience)} yrs</span>
             <span className="chip">{interview.questionCount} questions</span>
             {candidate.location && <span className="chip">{candidate.location}</span>}
+          </div>
+          <div className="mt-2 text-sm text-[var(--ink-dim)]">
+            {candidate.email}
+            {candidate.phone && <span className="text-[var(--ink-faint)]"> · {candidate.phone}</span>}
           </div>
         </div>
         <div className="text-right">
           <div className="text-5xl font-semibold tabular-nums">{assessment.overallScore}</div>
-          <div className="text-xs uppercase tracking-wider text-[var(--ink-faint)]">interview score</div>
-          <div className="mt-2 text-sm font-medium">{assessment.recommendation.replace(/_/g, " ")}</div>
+          <div className="text-xs uppercase tracking-wider text-[var(--ink-faint)]">
+            of 100 · {assessment.competenciesCounted}/{assessment.competenciesTotal} competencies
+          </div>
+          <div
+            className="mt-2 text-sm font-medium"
+            style={{ color: recommendationColor(assessment.recommendation) }}
+          >
+            {recommendationLabel(assessment.recommendation)}
+          </div>
         </div>
       </header>
+
+      {/* The decision stays with the reader. Saying so on the artefact they read
+          matters more than saying it in a policy document nobody opens. */}
+      <div className="panel border-[var(--accent-dim)] p-4 text-xs text-[var(--ink-dim)] leading-relaxed">
+        <span className="text-[var(--ink)] font-medium">This is decision support, not a decision.</span>{" "}
+        Nothing here advances or rejects anyone. {assessment.scoreExplanation}
+        {criteria && (
+          <>
+            {" "}Assessed against{" "}
+            <span className="font-mono text-[var(--ink)]">{criteria.sourcePath}</span> version{" "}
+            {criteria.version}, as it stood on {new Date(criteria.parsedAt).toLocaleDateString()} —
+            later edits to that file do not change this assessment.
+          </>
+        )}
+      </div>
 
       <section className="panel p-6">
         <p className="leading-relaxed">{assessment.summary}</p>
@@ -92,8 +142,9 @@ export default function CandidateReport({ params }: { params: Promise<{ id: stri
           <h2 className="text-sm font-medium mb-2">Skill diagram</h2>
           <SkillRadar points={assessment.competencies} />
           <p className="mt-2 text-xs text-[var(--ink-faint)] max-w-[380px]">
-            Hollow markers and dashed spokes mark axes the interview barely tested. Read those
-            scores as provisional.
+            Axes come from this role&apos;s criteria file. Hollow markers mark thinly-evidenced
+            scores; dashed spokes with no marker are competencies the interview never reached,
+            and the shape does not pass through them.
           </p>
         </div>
 
@@ -118,18 +169,38 @@ export default function CandidateReport({ params }: { params: Promise<{ id: stri
       </section>
 
       <section className="panel p-5">
-        <h2 className="text-sm font-medium">Competency detail</h2>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-sm font-medium">Competency detail</h2>
+          <span className="text-xs text-[var(--ink-faint)]">
+            Priority sets the weight: high ×3, medium ×2, low ×1
+          </span>
+        </div>
         <div className="mt-3 space-y-3">
           {assessment.competencies.map((c) => (
             <div key={c.competencyId} className="border-t border-[var(--border)] pt-3 first:border-0 first:pt-0">
               <div className="flex items-baseline justify-between gap-3">
-                <span className="text-sm font-medium">{c.label}</span>
-                <span className="text-sm tabular-nums">
-                  {c.score}
-                  <span className={`ml-2 text-xs ${c.confidence === "low" ? "text-[var(--warn)]" : "text-[var(--ink-faint)]"}`}>
-                    {c.confidence} confidence
-                  </span>
+                <span className="text-sm font-medium">
+                  {c.label}
+                  {c.priority && (
+                    <span className="ml-2 text-[10px] uppercase tracking-wider text-[var(--ink-faint)]">
+                      {c.priority} priority
+                    </span>
+                  )}
+                  {c.source === "homework" && (
+                    <span className="ml-2 chip text-[10px] border-[var(--accent-dim)]">homework</span>
+                  )}
                 </span>
+                {c.reached === false ? (
+                  <span className="text-xs text-[var(--warn)]">not assessed</span>
+                ) : (
+                  <span className="text-sm tabular-nums">
+                    {round(c.score)}
+                    <span className="text-[var(--ink-faint)]">/{RADAR_MAX}</span>
+                    <span className={`ml-2 text-xs ${c.confidence === "low" ? "text-[var(--warn)]" : "text-[var(--ink-faint)]"}`}>
+                      {c.confidence} confidence
+                    </span>
+                  </span>
+                )}
               </div>
               {c.note && <p className="mt-1 text-sm text-[var(--ink-dim)]">{c.note}</p>}
               {c.evidence && (
@@ -141,6 +212,89 @@ export default function CandidateReport({ params }: { params: Promise<{ id: stri
           ))}
         </div>
       </section>
+
+      <section>
+        <h2 className="text-sm font-medium mb-3">The card, as it appears in the list</h2>
+        <div className="max-w-sm">
+          <CandidateCard
+            candidate={{
+              candidateId: candidate.id,
+              name: candidate.name,
+              headline: candidate.headline,
+              roleTitle: interview.roleTitle,
+              seniority: interview.seniority,
+              yearsExperience: candidate.yearsExperience,
+              overallScore: assessment.overallScore,
+              recommendation: assessment.recommendation,
+              competenciesCounted: assessment.competenciesCounted,
+              competenciesTotal: assessment.competenciesTotal,
+              competencies: assessment.competencies,
+              contact: {
+                email: candidate.email,
+                phone: candidate.phone,
+                location: candidate.location,
+              },
+            }}
+          />
+        </div>
+      </section>
+
+      {homework && (
+        <section className="panel p-5">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-sm font-medium">Homework — {homework.title}</h2>
+            <span className="text-xs text-[var(--ink-faint)]">
+              set for {homework.targetKeys.join(", ") || "no recorded targets"} ·
+              {" "}~{homework.estimatedMinutes} min
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-[var(--ink-faint)]">
+            Generated from the competencies the interview left unreached or thinly evidenced.
+            Scores from it are averaged with the interview&apos;s, not added to them.
+          </p>
+
+          <details className="mt-4">
+            <summary className="cursor-pointer text-sm text-[var(--accent)]">
+              The task as the candidate saw it
+            </summary>
+            <div className="mt-2 whitespace-pre-wrap text-sm text-[var(--ink-dim)] leading-relaxed border-l-2 border-[var(--border)] pl-3">
+              {homework.brief}
+            </div>
+          </details>
+
+          {homework.submission ? (
+            <div className="mt-4 border-t border-[var(--border)] pt-4">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <span className="text-sm font-medium">Submission</span>
+                <span className="text-xs text-[var(--ink-faint)]">
+                  {new Date(homework.submission.submittedAt).toLocaleString()}
+                  {homework.submission.pasteCount > 0 && (
+                    <span className="text-[var(--warn)]">
+                      {" "}· {homework.submission.pasteCount} paste
+                      {homework.submission.pasteCount === 1 ? "" : "s"}
+                    </span>
+                  )}
+                </span>
+              </div>
+              {homework.submission.graderNote && (
+                <p className="mt-2 text-sm text-[var(--ink-dim)]">{homework.submission.graderNote}</p>
+              )}
+              <details className="mt-3">
+                <summary className="cursor-pointer text-sm text-[var(--accent)]">
+                  Read the submission
+                </summary>
+                <div className="mt-2 whitespace-pre-wrap text-sm text-[var(--ink-dim)] leading-relaxed border-l-2 border-[var(--border)] pl-3">
+                  {homework.submission.text}
+                </div>
+              </details>
+            </div>
+          ) : (
+            <p className="mt-4 border-t border-[var(--border)] pt-4 text-sm text-[var(--ink-faint)]">
+              Not submitted yet. The scores above rest on the interview alone.
+            </p>
+          )}
+        </section>
+      )}
 
       <section className="panel p-5">
         <h2 className="text-sm font-medium">Tags</h2>

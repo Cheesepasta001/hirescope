@@ -18,6 +18,9 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   const [progress, setProgress] = useState({ asked: 0, budget: 12 });
   const [isFinal, setIsFinal] = useState(false);
   const [role, setRole] = useState("");
+  // Set when the candidate is returning to a session they walked away from.
+  const [resumeOffer, setResumeOffer] = useState<{ purgeAfter: string | null } | null>(null);
+  const [discarding, setDiscarding] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   // Timing is measured relative to when the question appeared, not to page load.
@@ -51,6 +54,9 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
         setMessages(data.turns);
         setProgress({ asked: data.questionsAsked, budget: data.questionBudget });
         setRole(`${data.seniority} ${data.roleTitle}`);
+        if (data.resumeOffered) {
+          setResumeOffer({ purgeAfter: data.purgeAfter ?? null });
+        }
         questionShownAt.current = Date.now();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Could not load this interview.");
@@ -129,7 +135,57 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     }
   }
 
+  async function discard() {
+    setDiscarding(true);
+    try {
+      const res = await fetch(`/api/interview/${id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not delete this interview.");
+      router.replace("/apply?discarded=1");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not delete this interview.");
+      setDiscarding(false);
+    }
+  }
+
   if (loading) return <p className="text-sm text-[var(--ink-dim)]">Loading your interview…</p>;
+
+  // The one retry, offered once, with the deletion date stated rather than
+  // implied. A candidate who walked away should not have to guess what happens
+  // to what they already wrote.
+  if (resumeOffer) {
+    return (
+      <div className="max-w-xl space-y-5">
+        <h1 className="text-2xl font-semibold tracking-tight">You left this interview partway</h1>
+        <p className="text-sm text-[var(--ink-dim)] leading-relaxed">
+          {progress.asked > 0
+            ? `You answered ${messages.filter((m) => m.role === "candidate").length} of `
+              + `${progress.budget} questions. You can pick up where you left off — nothing you `
+              + `wrote has been lost.`
+            : "You had not answered anything yet. You can start now, or delete your application."}
+        </p>
+        <p className="text-sm text-[var(--ink-dim)] leading-relaxed">
+          If you would rather not continue, we will delete your resume and everything from this
+          session. That is not reversible.
+          {resumeOffer.purgeAfter && (
+            <>
+              {" "}If we do not hear from you, it is deleted automatically after{" "}
+              {new Date(resumeOffer.purgeAfter).toLocaleDateString()}.
+            </>
+          )}
+        </p>
+        {error && <div className="panel border-[var(--bad)] p-4 text-sm text-[var(--bad)]">{error}</div>}
+        <div className="flex flex-wrap items-center gap-3">
+          <button className="btn" onClick={() => setResumeOffer(null)} disabled={discarding}>
+            Continue the interview
+          </button>
+          <button className="btn-ghost" onClick={() => void discard()} disabled={discarding}>
+            {discarding ? "Deleting…" : "Delete my application"}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const pct = Math.min(100, Math.round((progress.asked / progress.budget) * 100));
 

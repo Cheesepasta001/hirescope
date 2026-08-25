@@ -1,0 +1,52 @@
+PRIYA RAGHAVAN
+Backend engineer
+priya.raghavan@example.com | +65 8555 0142 | Singapore
+github.com/example-priya
+
+SUMMARY
+Backend engineer with six years building and operating transaction-processing
+services. Most of my work has been on systems where being wrong is expensive and
+being slow is survivable.
+
+EXPERIENCE
+
+Senior Software Engineer — Meridian Pay (Singapore)
+March 2022 – present
+Own the settlement service that reconciles card transactions against processor
+statements, roughly 400k transactions a day.
+- Rebuilt the reconciliation job after a timezone bug caused a two-day mismatch;
+  cut the nightly window from 4 hours to 35 minutes.
+- Introduced idempotency keys across the payments API after a retry storm double-
+  charged 1,100 customers in March 2023.
+- Led the migration from a single Postgres instance to primary/replica with
+  read routing. Wrote the runbook; ran the cutover.
+- Mentored two junior engineers through their first on-call rotations.
+Technologies: Go, PostgreSQL, Kafka, Docker, Terraform, Datadog
+
+Software Engineer — Lumen Logistics (Bengaluru)
+July 2019 – February 2022
+Worked on the shipment-tracking API consumed by three internal teams and around
+forty customer integrations.
+- Cut p99 latency on the tracking endpoint from 1.8s to 240ms by replacing a
+  per-request join with a materialised view.
+- Built the webhook delivery system, including retry-with-backoff and a dead
+  letter queue.
+- Wrote the integration test harness the team still uses.
+Technologies: Python, Django, PostgreSQL, Redis, Celery, AWS
+
+Software Engineering Intern — Lumen Logistics (Bengaluru)
+January 2019 – June 2019
+Internal tooling for the operations team. Built a shift-scheduling dashboard.
+
+EDUCATION
+
+B.E. Computer Science — Anna University, Chennai
+2015 – 2019
+First class. Final-year project on distributed consensus.
+
+SKILLS
+Go, Python, PostgreSQL, Redis, Kafka, Docker, Kubernetes, Terraform, AWS, gRPC,
+distributed systems, payment systems, observability
+
+CERTIFICATIONS
+AWS Certified Solutions Architect – Associate (2021)

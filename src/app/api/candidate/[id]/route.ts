@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db, readJson } from "@/lib/db";
 import type { CompetencyScore } from "@/lib/assess/score";
+import { explainOverall, weightFor } from "@/lib/assess/scoring";
 import type { IntegrityReport } from "@/lib/integrity/signals";
 
 export const runtime = "nodejs";
@@ -22,7 +23,14 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
       resumes: { orderBy: { createdAt: "desc" }, take: 1, include: { findings: true } },
       interviews: {
         orderBy: { startedAt: "desc" },
-        include: { assessment: true, turns: { orderBy: { idx: "asc" } } },
+        include: {
+          assessment: { include: { scores: true } },
+          turns: { orderBy: { idx: "asc" } },
+          // The standard this interview was actually held to, which is not
+          // necessarily what the criteria file says today.
+          criteriaSet: { include: { competencies: { orderBy: { orderIndex: "asc" } } } },
+          homework: { include: { submission: true } },
+        },
       },
     },
   });
@@ -36,11 +44,32 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
 
   const a = latest.assessment;
 
+  // Score rows are authoritative; the JSON blob on the assessment is a copy kept
+  // for readers that only load the assessment. Prefer the rows, fall back for
+  // records written before the rows existed.
+  const priorityByKey = new Map(
+    (latest.criteriaSet?.competencies ?? []).map((c) => [c.key, c.priority]),
+  );
+  const competencies: CompetencyScore[] = a.scores.length
+    ? a.scores.map((s) => ({
+        competencyId: s.competencyKey,
+        label: s.label,
+        score: s.score,
+        priority: priorityByKey.get(s.competencyKey) ?? "medium",
+        confidence: s.confidence as "low" | "medium" | "high",
+        reached: s.reached,
+        evidence: s.evidenceQuote,
+        note: s.note,
+        source: s.source as "interview" | "homework",
+      }))
+    : readJson<CompetencyScore[]>(a.competencies, []);
+
   return NextResponse.json({
     candidate: {
       id: candidate.id,
       name: candidate.name,
       email: candidate.email,
+      phone: candidate.phone,
       location: candidate.location,
       headline: candidate.profile?.headline ?? "",
       yearsExperience: candidate.profile?.yearsExperience ?? 0,
@@ -55,21 +84,67 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
     interview: {
       id: latest.id,
       roleTitle: latest.roleTitle,
+      roleSlug: latest.roleSlug,
       sector: latest.sector,
       seniority: latest.seniority,
       startedAt: latest.startedAt,
       completedAt: latest.completedAt,
       questionCount: latest.turns.filter((t) => t.role === "interviewer").length,
     },
+    // Which version of the standard this person was held to. Kept separate from
+    // the criteria file's current contents on purpose — the file may have moved.
+    criteria: latest.criteriaSet
+      ? {
+          roleSlug: latest.criteriaSet.roleSlug,
+          roleTitle: latest.criteriaSet.roleTitle,
+          version: latest.criteriaSet.version,
+          sourcePath: latest.criteriaSet.sourcePath,
+          parsedAt: latest.criteriaSet.parsedAt,
+          competencyCount: latest.criteriaSet.competencies.length,
+        }
+      : null,
     assessment: {
       overallScore: a.overallScore,
       recommendation: a.recommendation,
       summary: a.summary,
-      competencies: readJson<CompetencyScore[]>(a.competencies, []),
+      competenciesCounted: a.competenciesCounted,
+      competenciesTotal: a.competenciesTotal || competencies.length,
+      scoreExplanation: explainOverall({
+        overall: a.overallScore,
+        counted: a.competenciesCounted,
+        total: a.competenciesTotal || competencies.length,
+        weightSum: competencies
+          .filter((c) => c.reached !== false)
+          .reduce((sum, c) => sum + weightFor(c.priority), 0),
+        unreached: competencies.filter((c) => c.reached === false).map((c) => c.competencyId),
+      }),
+      competencies,
       strengths: readJson<string[]>(a.strengths, []),
       concerns: readJson<string[]>(a.concerns, []),
       resumeDeltas: readJson<{ claim: string; direction: string; detail: string }[]>(a.resumeDeltas, []),
     },
+    // The homework brief and the submission are both part of the record a
+    // manager reads. The grading rubric is not — it stays out of the response
+    // for the same reason it stays out of the candidate's copy.
+    homework: latest.homework
+      ? {
+          title: latest.homework.title,
+          brief: latest.homework.brief,
+          rationale: latest.homework.rationale,
+          estimatedMinutes: latest.homework.estimatedMinutes,
+          targetKeys: readJson<string[]>(latest.homework.targetKeys, []),
+          createdAt: latest.homework.createdAt,
+          submission: latest.homework.submission
+            ? {
+                text: latest.homework.submission.text,
+                submittedAt: latest.homework.submission.submittedAt,
+                gradedAt: latest.homework.submission.gradedAt,
+                graderNote: latest.homework.submission.graderNote,
+                pasteCount: latest.homework.submission.pasteCount,
+              }
+            : null,
+        }
+      : null,
     integrity: readJson<IntegrityReport | null>(a.integrity, null),
     tags: candidate.tags
       .map((ct) => ({

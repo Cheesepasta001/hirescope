@@ -19,6 +19,11 @@ services:
       npx prisma db push --accept-data-loss &&
       npm run db:seed:optional
 
+    # Started from the repo root, which matters: the criteria/*.md files that
+    # define the assessment standard are read from disk at request time rather
+    # than bundled, so an operator can edit one on a running deployment and have
+    # the next interview pick it up. A host that ships only the traced build
+    # output would break that.
     startCommand: npm run start
     healthCheckPath: /
     envVars:

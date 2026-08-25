@@ -3,52 +3,81 @@
 export type RadarPoint = {
   competencyId: string;
   label: string;
-  score: number; // 0-100
+  /** 0-10, matching the criteria scale. */
+  score: number;
   confidence: "low" | "medium" | "high";
+  /** False when the interview never tested this competency. */
+  reached?: boolean;
+  priority?: string;
+  /** Which stage produced the score. Homework scores are labelled in the detail view. */
+  source?: "interview" | "homework";
   evidence?: string;
   note?: string;
 };
 
+export const RADAR_MAX = 10;
+
 /**
  * The skill diagram.
  *
- * Confidence is drawn, not just labelled: low-confidence axes get a hollow
- * marker and a dashed spoke, so a manager can see at a glance which parts of the
- * shape are supported by the interview and which are guesses from thin evidence.
- * A radar chart that renders a 20-confidence score identically to a 90-confidence
- * one is actively misleading, which is the usual failing of these diagrams.
+ * Axes come from the role's criteria file, so their number and their labels vary
+ * by role — anywhere from two to a dozen. Nothing here assumes a fixed set.
+ *
+ * Two things are drawn rather than merely labelled, because a diagram that
+ * renders them identically to real scores is actively misleading:
+ *
+ *   - **Unreached competencies** get a dashed spoke and no marker, and the
+ *     shape does not pass through them. An interview that covered five of eight
+ *     competencies should look like it covered five, not like a candidate who
+ *     scored zero on three.
+ *   - **Low-confidence scores** get a hollow marker, so a thinly-evidenced 8
+ *     does not read the same as a well-evidenced 8.
  */
 export function SkillRadar({ points, size = 380 }: { points: RadarPoint[]; size?: number }) {
-  if (points.length < 3) {
+  const n = points.length;
+
+  if (n < 3) {
     return (
       <p className="text-sm text-[var(--ink-faint)]">
-        Not enough scored competencies to draw a diagram.
+        {n === 0
+          ? "No competencies were scored."
+          : "A diagram needs at least three competencies. This role's criteria file defines "
+            + `${n}, so the scores are listed instead.`}
       </p>
     );
   }
 
   const cx = size / 2;
   const cy = size / 2;
-  const r = size / 2 - 62;
-  const n = points.length;
+  // Long labels on many axes need more margin than a four-axis chart does.
+  const r = size / 2 - (n > 8 ? 74 : 62);
 
   const angle = (i: number) => (Math.PI * 2 * i) / n - Math.PI / 2;
   const at = (i: number, radius: number) => ({
     x: cx + Math.cos(angle(i)) * radius,
     y: cy + Math.sin(angle(i)) * radius,
   });
+  const radiusFor = (score: number) =>
+    (Math.max(0, Math.min(RADAR_MAX, score)) / RADAR_MAX) * r;
+
+  const isReached = (p: RadarPoint) => p.reached !== false;
+  const reached = points.map(isReached);
+  const reachedCount = reached.filter(Boolean).length;
 
   const rings = [0.25, 0.5, 0.75, 1];
-  const polygon = points
-    .map((p, i) => {
-      const pt = at(i, (Math.max(0, Math.min(100, p.score)) / 100) * r);
-      return `${pt.x},${pt.y}`;
-    })
+
+  // The filled shape spans only the competencies that were actually assessed.
+  const shape = points
+    .map((p, i) => (isReached(p) ? at(i, radiusFor(p.score)) : null))
+    .filter((pt): pt is { x: number; y: number } => pt !== null)
+    .map((pt) => `${pt.x},${pt.y}`)
     .join(" ");
 
   return (
-    <svg viewBox={`0 0 ${size} ${size}`} width="100%" style={{ maxWidth: size }} role="img"
-      aria-label="Competency scores by axis">
+    <svg
+      viewBox={`0 0 ${size} ${size}`} width="100%" style={{ maxWidth: size }} role="img"
+      aria-label={`Competency scores across ${n} axes, ${reachedCount} of them assessed`}
+    >
       {rings.map((ring) => (
         <polygon
           key={ring}
@@ -63,16 +92,21 @@ export function SkillRadar({ points, size = 380 }: { points: RadarPoint[]; size?
           <line
             key={p.competencyId} x1={cx} y1={cy} x2={end.x} y2={end.y}
             stroke="var(--border)" strokeWidth="1"
-            strokeDasharray={p.confidence === "low" ? "3 4" : undefined}
+            strokeDasharray={!isReached(p) || p.confidence === "low" ? "3 4" : undefined}
           />
         );
       })}
 
-      <polygon points={polygon} fill="var(--accent)" fillOpacity="0.16"
-        stroke="var(--accent)" strokeWidth="2" strokeLinejoin="round" />
+      {reachedCount >= 3 && (
+        <polygon
+          points={shape} fill="var(--accent)" fillOpacity="0.16"
+          stroke="var(--accent)" strokeWidth="2" strokeLinejoin="round"
+        />
+      )}
 
       {points.map((p, i) => {
-        const pt = at(i, (Math.max(0, Math.min(100, p.score)) / 100) * r);
+        if (!isReached(p)) return null;
+        const pt = at(i, radiusFor(p.score));
         const low = p.confidence === "low";
         return (
           <circle
@@ -80,7 +114,7 @@ export function SkillRadar({ points, size = 380 }: { points: RadarPoint[]; size?
             fill={low ? "var(--bg)" : "var(--accent)"}
             stroke="var(--accent)" strokeWidth="2"
           >
-            <title>{`${p.label}: ${p.score}/100 (${p.confidence} confidence)`}</title>
+            <title>{`${p.label}: ${round(p.score)}/${RADAR_MAX} (${p.confidence} confidence)`}</title>
           </circle>
         );
       })}
@@ -89,25 +123,43 @@ export function SkillRadar({ points, size = 380 }: { points: RadarPoint[]; size?
         const pt = at(i, r + 26);
         const a = angle(i);
         const anchor = Math.abs(Math.cos(a)) < 0.25 ? "middle" : Math.cos(a) > 0 ? "start" : "end";
+        const reachedHere = isReached(p);
         return (
           <g key={p.competencyId}>
             <text
               x={pt.x} y={pt.y} textAnchor={anchor} dominantBaseline="middle"
-              fontSize="10.5" fill="var(--ink-dim)"
+              fontSize="10.5" fill={reachedHere ? "var(--ink-dim)" : "var(--ink-faint)"}
             >
-              {p.label.length > 22 ? `${p.label.slice(0, 21)}…` : p.label}
+              {truncate(p.label, n > 8 ? 26 : 22)}
             </text>
             <text
               x={pt.x} y={pt.y + 12} textAnchor={anchor} dominantBaseline="middle"
               fontSize="10" fontWeight="600"
-              fill={p.confidence === "low" ? "var(--ink-faint)" : "var(--ink)"}
+              fill={reachedHere ? (p.confidence === "low" ? "var(--ink-faint)" : "var(--ink)") : "var(--ink-faint)"}
             >
-              {p.score}
-              {p.confidence === "low" && <tspan fill="var(--warn)"> ·low conf</tspan>}
+              {reachedHere ? (
+                <>
+                  {round(p.score)}
+                  <tspan fill="var(--ink-faint)">/{RADAR_MAX}</tspan>
+                  {p.confidence === "low" && <tspan fill="var(--warn)"> ·low conf</tspan>}
+                </>
+              ) : (
+                <tspan fill="var(--warn)">not assessed</tspan>
+              )}
             </text>
           </g>
         );
       })}
     </svg>
   );
+}
+
+/** One decimal, but only when it says something — 7 rather than 7.0. */
+export function round(score: number): string {
+  const r = Math.round(score * 10) / 10;
+  return Number.isInteger(r) ? String(r) : r.toFixed(1);
+}
+
+function truncate(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }

@@ -27,9 +27,9 @@ type Result = {
 
 const EXAMPLES = [
   "Software engineer who has experience with PyTorch",
-  "Senior finance candidate strong on risk and control",
-  "HR lead who has actually run layoffs",
-  "Product manager who can show they killed a feature",
+  "Backend engineer who has worked on payments",
+  "Curriculum lead who has redesigned a course on evidence",
+  "Enterprise seller who knows their own conversion numbers",
 ];
 
 export default function ManagerPage() {
@@ -67,11 +67,16 @@ export default function ManagerPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold tracking-tight">Find candidates</h1>
-      <p className="mt-2 text-sm text-[var(--ink-dim)]">
-        Describe who you need in plain English. Results are ranked on skills the interview
-        actually evidenced, not on what a resume asserted.
-      </p>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Find candidates</h1>
+          <p className="mt-2 text-sm text-[var(--ink-dim)]">
+            Describe who you need in plain English. Results are ranked on skills the interview
+            actually evidenced, not on what a resume asserted.
+          </p>
+        </div>
+        <Link href="/manager/candidates" className="btn-ghost text-sm">Browse all candidates</Link>
+      </div>
 
       <div className="mt-6 grid gap-3 sm:grid-cols-[1fr_auto_auto]">
         <input

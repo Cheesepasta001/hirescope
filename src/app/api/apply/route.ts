@@ -7,7 +7,11 @@ import { checkConsistency } from "@/lib/verify/consistency";
 import { checkLinks } from "@/lib/verify/links";
 import { buildPlan } from "@/lib/interview/plan";
 import { checkInviteCode, checkDailyCap } from "@/lib/gate";
-import type { SectorId } from "@/lib/interview/sectors";
+import {
+  resolveCriteria,
+  CriteriaValidationError,
+  CriteriaNotFoundError,
+} from "@/lib/criteria/load";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -43,16 +47,21 @@ export async function POST(request: Request) {
     }
 
     const email = String(form.get("email") ?? "").trim().toLowerCase();
-    const roleTitle = String(form.get("roleTitle") ?? "").trim();
-    const sector = String(form.get("sector") ?? "other") as SectorId;
+    const roleSlug = String(form.get("roleSlug") ?? "").trim();
     const seniority = String(form.get("seniority") ?? "mid");
 
     if (!email || !email.includes("@")) {
       return NextResponse.json({ error: "A valid email address is required." }, { status: 400 });
     }
-    if (!roleTitle) {
+    if (!roleSlug) {
       return NextResponse.json({ error: "Tell us which role you are applying for." }, { status: 400 });
     }
+
+    // The assessment standard is loaded before anything else is done with the
+    // application. A malformed criteria file must stop the interview rather than
+    // let it run against a half-read standard — and the message has to be usable
+    // by whoever edits that file.
+    const criteria = await resolveCriteria(roleSlug);
 
     // Consent is explicit and per-purpose. The interview cannot proceed without
     // the first two; link checking is genuinely optional and defaults to off.
@@ -131,14 +140,16 @@ export async function POST(request: Request) {
       ],
     });
 
-    const plan = await buildPlan(extracted, sector, roleTitle, seniority);
+    const plan = await buildPlan(extracted, criteria, seniority);
 
     const interview = await db.interview.create({
       data: {
         candidateId: candidate.id,
         resumeId: resume.id,
-        sector,
-        roleTitle,
+        criteriaSetId: criteria.criteriaSetId,
+        roleSlug: criteria.roleSlug,
+        sector: criteria.sector,
+        roleTitle: criteria.roleTitle,
         seniority,
         plan: writeJson(plan),
       },
@@ -161,11 +172,31 @@ export async function POST(request: Request) {
       interviewId: interview.id,
       candidateName: extracted.name,
       headline: extracted.headline,
+      roleTitle: criteria.roleTitle,
+      competencyCount: criteria.competencies.length,
       questionBudget: plan.questionBudget,
       openingQuestion: plan.openingQuestion,
     });
   } catch (error) {
-    const { status, message } = describeApiError(error);
-    return NextResponse.json({ error: message }, { status });
+    // Criteria problems get their own shape: the audience is whoever edits the
+    // markdown, and they need the line numbers, not a generic 500.
+    if (error instanceof CriteriaValidationError) {
+      return NextResponse.json(
+        {
+          error:
+            "The assessment criteria for this role could not be read, so the interview "
+            + "cannot start. Whoever maintains the criteria file needs to fix it.",
+          criteriaFile: error.sourcePath,
+          criteriaErrors: error.errors,
+        },
+        { status: 500 },
+      );
+    }
+    if (error instanceof CriteriaNotFoundError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
+    const { status, message, retryable } = describeApiError(error);
+    return NextResponse.json({ error: message, retryable }, { status });
   }
 }
