@@ -22,6 +22,14 @@ type Report = {
     competencies: RadarPoint[]; strengths: string[]; concerns: string[];
     resumeDeltas: { claim: string; direction: string; detail: string }[];
   };
+  homework: {
+    title: string; brief: string; rationale: string;
+    estimatedMinutes: number; targetKeys: string[]; createdAt: string;
+    submission: {
+      text: string; submittedAt: string; gradedAt: string | null;
+      graderNote: string | null; pasteCount: number;
+    } | null;
+  } | null;
   integrity: {
     anomalyScore: number; band: string;
     observations: { label: string; detail: string; weight: number }[];
@@ -62,7 +70,7 @@ export default function CandidateReport({ params }: { params: Promise<{ id: stri
   }
   if (!report) return <p className="text-sm text-[var(--ink-dim)]">Loading report…</p>;
 
-  const { candidate, interview, criteria, assessment, integrity, tags, verification, transcript } = report;
+  const { candidate, interview, criteria, assessment, homework, integrity, tags, verification, transcript } = report;
   const demonstrated = tags.filter((t) => t.status === "demonstrated");
   const claimed = tags.filter((t) => t.status === "claimed");
   const contradicted = tags.filter((t) => t.status === "contradicted");
@@ -72,6 +80,13 @@ export default function CandidateReport({ params }: { params: Promise<{ id: stri
       <div className="flex flex-wrap items-center gap-4 text-sm">
         <Link href="/manager/candidates" className="text-[var(--accent)]">← All candidates</Link>
         <Link href="/manager" className="text-[var(--ink-faint)] hover:text-[var(--ink)]">Search</Link>
+        {/* The record of what was asked, said, and applied — for the hiring file. */}
+        <a
+          href={`/api/interview/${interview.id}/export`}
+          className="ml-auto text-[var(--accent)]"
+        >
+          Download the record (.md)
+        </a>
       </div>
 
       <header className="flex flex-wrap items-start justify-between gap-6">
@@ -223,6 +238,63 @@ export default function CandidateReport({ params }: { params: Promise<{ id: stri
           />
         </div>
       </section>
+
+      {homework && (
+        <section className="panel p-5">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-sm font-medium">Homework — {homework.title}</h2>
+            <span className="text-xs text-[var(--ink-faint)]">
+              set for {homework.targetKeys.join(", ") || "no recorded targets"} ·
+              {" "}~{homework.estimatedMinutes} min
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-[var(--ink-faint)]">
+            Generated from the competencies the interview left unreached or thinly evidenced.
+            Scores from it are averaged with the interview&apos;s, not added to them.
+          </p>
+
+          <details className="mt-4">
+            <summary className="cursor-pointer text-sm text-[var(--accent)]">
+              The task as the candidate saw it
+            </summary>
+            <div className="mt-2 whitespace-pre-wrap text-sm text-[var(--ink-dim)] leading-relaxed border-l-2 border-[var(--border)] pl-3">
+              {homework.brief}
+            </div>
+          </details>
+
+          {homework.submission ? (
+            <div className="mt-4 border-t border-[var(--border)] pt-4">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <span className="text-sm font-medium">Submission</span>
+                <span className="text-xs text-[var(--ink-faint)]">
+                  {new Date(homework.submission.submittedAt).toLocaleString()}
+                  {homework.submission.pasteCount > 0 && (
+                    <span className="text-[var(--warn)]">
+                      {" "}· {homework.submission.pasteCount} paste
+                      {homework.submission.pasteCount === 1 ? "" : "s"}
+                    </span>
+                  )}
+                </span>
+              </div>
+              {homework.submission.graderNote && (
+                <p className="mt-2 text-sm text-[var(--ink-dim)]">{homework.submission.graderNote}</p>
+              )}
+              <details className="mt-3">
+                <summary className="cursor-pointer text-sm text-[var(--accent)]">
+                  Read the submission
+                </summary>
+                <div className="mt-2 whitespace-pre-wrap text-sm text-[var(--ink-dim)] leading-relaxed border-l-2 border-[var(--border)] pl-3">
+                  {homework.submission.text}
+                </div>
+              </details>
+            </div>
+          ) : (
+            <p className="mt-4 border-t border-[var(--border)] pt-4 text-sm text-[var(--ink-faint)]">
+              Not submitted yet. The scores above rest on the interview alone.
+            </p>
+          )}
+        </section>
+      )}
 
       <section className="panel p-5">
         <h2 className="text-sm font-medium">Tags</h2>

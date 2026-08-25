@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { db, readJson } from "@/lib/db";
 import type { CompetencyScore } from "@/lib/assess/score";
+import { explainOverall, weightFor } from "@/lib/assess/scoring";
 import type { IntegrityReport } from "@/lib/integrity/signals";
+import type { InterviewPlan } from "@/lib/interview/plan";
+import { chooseTargets } from "@/lib/homework/generate";
 
 export const runtime = "nodejs";
 
@@ -27,6 +30,7 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
       assessment: true,
       candidate: { select: { name: true } },
       resume: { include: { findings: { where: { candidateVisible: true } } } },
+      homework: { include: { submission: { select: { submittedAt: true } } } },
     },
   });
 
@@ -37,6 +41,14 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
 
   const a = interview.assessment;
   const integrity = readJson<IntegrityReport | null>(a.integrity, null);
+  const competencies = readJson<CompetencyScore[]>(a.competencies, []);
+
+  // The task is generated only when the candidate opens it, so before then its
+  // shape is derived here from the same deterministic target choice the
+  // generator uses. That lets the page describe the task honestly without
+  // spending a model call on someone who may never click.
+  const plan = readJson<InterviewPlan | null>(interview.plan, null);
+  const targetCount = plan ? chooseTargets(plan, competencies).competencies.length : 0;
 
   return NextResponse.json({
     ready: true,
@@ -45,7 +57,27 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
     overallScore: a.overallScore,
     recommendation: a.recommendation,
     summary: a.summary,
-    competencies: readJson<CompetencyScore[]>(a.competencies, []),
+    // The candidate sees the same arithmetic the manager does.
+    scoreExplanation: explainOverall({
+      overall: a.overallScore,
+      counted: a.competenciesCounted,
+      total: a.competenciesTotal || competencies.length,
+      weightSum: competencies
+        .filter((c) => c.reached !== false)
+        .reduce((sum, c) => sum + weightFor(c.priority), 0),
+      unreached: competencies.filter((c) => c.reached === false).map((c) => c.competencyId),
+    }),
+    homework: interview.homework
+      ? {
+          generated: true,
+          estimatedMinutes: interview.homework.estimatedMinutes,
+          competencyCount: readJson<string[]>(interview.homework.targetKeys, []).length,
+          submitted: Boolean(interview.homework.submission),
+        }
+      : targetCount > 0
+        ? { generated: false, estimatedMinutes: null, competencyCount: targetCount, submitted: false }
+        : null,
+    competencies,
     strengths: readJson<string[]>(a.strengths, []),
     concerns: readJson<string[]>(a.concerns, []),
     // Candidates see what was flagged about their resume so they can correct it.

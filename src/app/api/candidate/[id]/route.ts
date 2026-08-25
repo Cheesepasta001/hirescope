@@ -29,6 +29,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
           // The standard this interview was actually held to, which is not
           // necessarily what the criteria file says today.
           criteriaSet: { include: { competencies: { orderBy: { orderIndex: "asc" } } } },
+          homework: { include: { submission: true } },
         },
       },
     },
@@ -122,6 +123,28 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
       concerns: readJson<string[]>(a.concerns, []),
       resumeDeltas: readJson<{ claim: string; direction: string; detail: string }[]>(a.resumeDeltas, []),
     },
+    // The homework brief and the submission are both part of the record a
+    // manager reads. The grading rubric is not — it stays out of the response
+    // for the same reason it stays out of the candidate's copy.
+    homework: latest.homework
+      ? {
+          title: latest.homework.title,
+          brief: latest.homework.brief,
+          rationale: latest.homework.rationale,
+          estimatedMinutes: latest.homework.estimatedMinutes,
+          targetKeys: readJson<string[]>(latest.homework.targetKeys, []),
+          createdAt: latest.homework.createdAt,
+          submission: latest.homework.submission
+            ? {
+                text: latest.homework.submission.text,
+                submittedAt: latest.homework.submission.submittedAt,
+                gradedAt: latest.homework.submission.gradedAt,
+                graderNote: latest.homework.submission.graderNote,
+                pasteCount: latest.homework.submission.pasteCount,
+              }
+            : null,
+        }
+      : null,
     integrity: readJson<IntegrityReport | null>(a.integrity, null),
     tags: candidate.tags
       .map((ct) => ({

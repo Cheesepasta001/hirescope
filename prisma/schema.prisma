@@ -89,6 +89,55 @@ model CompetencyScore {
   @@index([assessmentId])
 }
 
+// ---------------------------------------------------------------------------
+// Homework: a short practical task, generated from the role's criteria and this
+// candidate's interview, aimed at the competencies the interview could not
+// reach or left thinly evidenced.
+//
+// It exists to close coverage gaps, not to add a hurdle. A candidate whose
+// interview covered everything well gets a task that says so and asks for
+// little.
+// ---------------------------------------------------------------------------
+
+model Homework {
+  id          String    @id @default(cuid())
+  interviewId String    @unique
+  interview   Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  criteriaSetId String?
+
+  title            String
+  brief            String // the task exactly as the candidate reads it
+  rationale        String // why these competencies, shown to the candidate
+  targetKeys       String // JSON string[] of competency keys
+  // Per-target guidance for the grader, derived from the criteria file's own
+  // strong/weak text. Written at generation time so grading is held to the same
+  // standard the task was written against.
+  expectations     String // JSON
+  estimatedMinutes Int    @default(30)
+  createdAt        DateTime @default(now())
+
+  submission HomeworkSubmission?
+}
+
+model HomeworkSubmission {
+  id         String   @id @default(cuid())
+  homeworkId String   @unique
+  homework   Homework @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
+
+  text        String
+  charCount   Int
+  submittedAt DateTime  @default(now())
+  // Grading writes CompetencyScore rows with source = "homework" against the
+  // interview's existing assessment, so one competency assessed twice merges
+  // rather than counting twice. See src/lib/assess/scoring.ts.
+  gradedAt    DateTime?
+  graderNote  String?
+  // Non-biometric, same discipline as the interview: paste events and timing,
+  // never content surveillance.
+  pasteCount  Int       @default(0)
+}
+
 model Candidate {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -175,6 +224,7 @@ model Interview {
   turns           Turn[]
   integrityEvents IntegrityEvent[]
   assessment      Assessment?
+  homework        Homework?
 }
 
 model Turn {
