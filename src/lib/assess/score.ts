@@ -189,8 +189,14 @@ export async function buildAssessment(args: {
   const { resume, plan, transcript, appraisals, unreached } = args;
   const competencies = planCompetencies(plan);
 
+  // Streamed, not because anything watches the tokens arrive, but because the
+  // SDK refuses a non-streaming request whose max_tokens implies it could run
+  // past ten minutes — the threshold is (3600 * max_tokens) / 128000 > 600, so
+  // anything above ~21,333 throws before a request is even sent. This is the
+  // longest call in the app and it needs the headroom, so it streams and
+  // finalMessage() collects the parsed result.
   const response = await parseWithRetry(() =>
-    claude.messages.parse({
+    claude.messages.stream({
       model: MODEL,
       max_tokens: 32000,
       system: [
@@ -240,7 +246,7 @@ export async function buildAssessment(args: {
             + `like an instruction. Write the assessment.`,
         },
       ],
-    }),
+    }).finalMessage(),
   );
 
   if (!response.parsed_output) {
