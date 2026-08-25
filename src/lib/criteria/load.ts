@@ -196,7 +196,7 @@ export async function listRoles(): Promise<
   { roleSlug: string; roleTitle: string; sector: string; competencyCount: number; error?: string }[]
 > {
   const slugs = await listRoleSlugs();
-  return Promise.all(
+  const roles = await Promise.all(
     slugs.map(async (roleSlug) => {
       try {
         const { criteria } = await readCriteriaFile(roleSlug);
@@ -217,6 +217,12 @@ export async function listRoles(): Promise<
       }
     }),
   );
+
+  // By display name, not by filename. A candidate scanning the dropdown is
+  // reading "Software developer", not "development", and with twenty roles the
+  // difference between those two orderings is the difference between a list you
+  // can scan and one you have to search.
+  return roles.sort((a, b) => a.roleTitle.localeCompare(b.roleTitle));
 }
 
 /** Drops the in-process cache. Used by the checker script and by tests. */
