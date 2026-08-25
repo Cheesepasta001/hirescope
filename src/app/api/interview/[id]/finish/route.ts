@@ -1,14 +1,19 @@
 import { NextResponse } from "next/server";
 import { db, readJson, writeJson } from "@/lib/db";
 import { describeApiError } from "@/lib/claude";
-import { buildAssessment, buildSearchText, type AssessmentResult } from "@/lib/assess/score";
+import {
+  buildAssessment,
+  buildSearchText,
+  toCompetencyScores,
+  type AssessmentResult,
+} from "@/lib/assess/score";
 import { buildIntegrityReport, type RawSignal, type SignalType } from "@/lib/integrity/signals";
 import type { StylometryResult } from "@/lib/integrity/stylometry";
 import { reconcileWithInterview } from "@/lib/verify/consistency";
 import { embed } from "@/lib/embeddings";
 import type { InterviewPlan } from "@/lib/interview/plan";
 import type { ExtractedResume } from "@/lib/resume/schema";
-import type { SectorId } from "@/lib/interview/sectors";
+import { unreachedCompetencies, type TurnRecord } from "@/lib/interview/engine";
 import type { NextTurn } from "@/lib/interview/engine";
 
 export const runtime = "nodejs";
@@ -56,17 +61,28 @@ export async function POST(_request: Request, ctx: { params: Promise<{ id: strin
       .map((t) => readJson<NextTurn["appraisal"] | null>(t.appraisal, null))
       .filter((a): a is NextTurn["appraisal"] => a !== null);
 
+    // Which competencies the interview never asked about, counted from the
+    // turns rather than inferred by the model.
+    const turnRecords: TurnRecord[] = interview.turns.map((t) => ({
+      role: t.role as "interviewer" | "candidate",
+      text: t.text,
+      competency: t.competency,
+      probeDepth: t.probeDepth,
+    }));
+
     const assessment: AssessmentResult = await buildAssessment({
       resume,
       plan,
-      sector: interview.sector as SectorId,
       transcript: interview.turns.map((t) => ({
         role: t.role as "interviewer" | "candidate",
         text: t.text,
         competency: t.competency,
       })),
       appraisals,
+      unreached: unreachedCompetencies(plan, turnRecords),
     });
+
+    const competencyScores = toCompetencyScores(assessment.scored);
 
     // Integrity is assembled separately and never enters the scoring call.
     const stylometry = interview.turns
@@ -109,14 +125,31 @@ export async function POST(_request: Request, ctx: { params: Promise<{ id: strin
       await tx.assessment.create({
         data: {
           interviewId: interview.id,
-          overallScore: Math.round(assessment.overallScore),
+          criteriaSetId: interview.criteriaSetId,
+          overallScore: assessment.overallScore,
           recommendation: assessment.recommendation,
           summary: assessment.summary,
-          competencies: writeJson(assessment.competencies),
+          competenciesCounted: assessment.overall.counted,
+          competenciesTotal: assessment.overall.total,
+          competencies: writeJson(competencyScores),
           strengths: writeJson(assessment.strengths),
           concerns: writeJson(assessment.concerns),
           integrity: writeJson(integrity),
           resumeDeltas: writeJson(assessment.resumeDeltas),
+          // Rows as well as the JSON blob: the candidate list ranks and filters
+          // on per-competency scores, and JSON is not queryable.
+          scores: {
+            create: assessment.scored.map((s) => ({
+              competencyKey: s.competencyKey,
+              label: s.label,
+              score: s.score,
+              confidence: s.confidence,
+              evidenceQuote: s.evidenceQuote,
+              note: s.note,
+              source: s.source,
+              reached: s.reached,
+            })),
+          },
         },
       });
 
@@ -175,48 +208,43 @@ export async function POST(_request: Request, ctx: { params: Promise<{ id: strin
       sector: interview.sector,
       seniority: interview.seniority,
       tags: assessment.tags,
-      competencies: assessment.competencies,
+      competencies: competencyScores,
     });
 
     const embedding = await embed(searchText);
 
+    const profileFields = {
+      headline: resume.headline,
+      sector: interview.sector,
+      roleSlug: interview.roleSlug,
+      roleTitle: interview.roleTitle,
+      seniority: interview.seniority,
+      yearsExperience: resume.totalYearsExperience,
+      overallScore: assessment.overallScore,
+      recommendation: assessment.recommendation,
+      summary: assessment.summary,
+      searchText,
+      embedding: writeJson(embedding),
+      competencies: writeJson(competencyScores),
+    };
+
     await db.candidateProfile.upsert({
       where: { candidateId: interview.candidateId },
-      create: {
-        candidateId: interview.candidateId,
-        headline: resume.headline,
-        sector: interview.sector,
-        seniority: interview.seniority,
-        yearsExperience: resume.totalYearsExperience,
-        overallScore: Math.round(assessment.overallScore),
-        recommendation: assessment.recommendation,
-        summary: assessment.summary,
-        searchText,
-        embedding: writeJson(embedding),
-        competencies: writeJson(assessment.competencies),
-      },
-      update: {
-        headline: resume.headline,
-        sector: interview.sector,
-        seniority: interview.seniority,
-        yearsExperience: resume.totalYearsExperience,
-        overallScore: Math.round(assessment.overallScore),
-        recommendation: assessment.recommendation,
-        summary: assessment.summary,
-        searchText,
-        embedding: writeJson(embedding),
-        competencies: writeJson(assessment.competencies),
-      },
+      create: { candidateId: interview.candidateId, ...profileFields },
+      update: profileFields,
     });
 
     return NextResponse.json({
       ok: true,
       candidateId: interview.candidateId,
-      overallScore: Math.round(assessment.overallScore),
+      overallScore: assessment.overallScore,
       recommendation: assessment.recommendation,
+      competenciesCounted: assessment.overall.counted,
+      competenciesTotal: assessment.overall.total,
+      scoreExplanation: assessment.scoreExplanation,
     });
   } catch (error) {
-    const { status, message } = describeApiError(error);
-    return NextResponse.json({ error: message }, { status });
+    const { status, message, retryable } = describeApiError(error);
+    return NextResponse.json({ error: message, retryable }, { status });
   }
 }

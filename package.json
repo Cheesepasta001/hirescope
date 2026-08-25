@@ -15,7 +15,8 @@
     "postinstall": "prisma generate",
     "db:postgres": "node scripts/db-provider.mjs postgres",
     "db:sqlite": "node scripts/db-provider.mjs sqlite",
-    "db:seed:optional": "node scripts/seed-optional.mjs"
+    "db:seed:optional": "node scripts/seed-optional.mjs",
+    "criteria:check": "tsx scripts/check-criteria.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",

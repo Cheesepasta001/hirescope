@@ -3,25 +3,24 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-const SECTORS = [
-  ["engineering", "Engineering"],
-  ["finance", "Banking & finance"],
-  ["hr", "HR & people"],
-  ["product", "Product"],
-  ["sales", "Sales"],
-  ["marketing", "Marketing"],
-  ["healthcare", "Healthcare"],
-  ["legal", "Legal"],
-  ["operations", "Operations"],
-  ["other", "Other"],
-] as const;
+type Role = {
+  roleSlug: string;
+  roleTitle: string;
+  sector: string;
+  competencyCount: number;
+  available: boolean;
+  error: string | null;
+};
+
+type CriteriaError = { line: number; message: string; fix: string };
 
 export default function ApplyPage() {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [email, setEmail] = useState("");
-  const [roleTitle, setRoleTitle] = useState("");
-  const [sector, setSector] = useState("engineering");
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [rolesLoaded, setRolesLoaded] = useState(false);
+  const [roleSlug, setRoleSlug] = useState("");
   const [seniority, setSeniority] = useState("mid");
   const [consentInterview, setConsentInterview] = useState(false);
   const [consentRecording, setConsentRecording] = useState(false);
@@ -30,6 +29,9 @@ export default function ApplyPage() {
   const [inviteRequired, setInviteRequired] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [criteriaProblem, setCriteriaProblem] = useState<
+    { file: string; errors: CriteriaError[] } | null
+  >(null);
 
   // Whether a code is needed is a property of the deployment, not the build, so
   // the field appears only where the operator actually configured one.
@@ -40,8 +42,25 @@ export default function ApplyPage() {
       .catch(() => {});
   }, []);
 
+  // Roles come from the criteria files on disk, so this list is whatever HR has
+  // published — not a hard-coded menu.
+  useEffect(() => {
+    fetch("/api/roles")
+      .then((r) => r.json())
+      .then((d) => {
+        const list: Role[] = d.roles ?? [];
+        setRoles(list);
+        setRoleSlug(list.find((r) => r.available)?.roleSlug ?? "");
+        setRolesLoaded(true);
+      })
+      .catch(() => setRolesLoaded(true));
+  }, []);
+
+  const selected = roles.find((r) => r.roleSlug === roleSlug);
+  const noRoles = rolesLoaded && roles.filter((r) => r.available).length === 0;
+
   const ready =
-    file && email.includes("@") && roleTitle.trim() && consentInterview
+    file && email.includes("@") && roleSlug && selected?.available && consentInterview
     && (!inviteRequired || inviteCode.trim());
 
   async function submit(e: React.FormEvent) {
@@ -49,12 +68,12 @@ export default function ApplyPage() {
     if (!ready || !file) return;
     setBusy(true);
     setError(null);
+    setCriteriaProblem(null);
 
     const fd = new FormData();
     fd.set("resume", file);
     fd.set("email", email);
-    fd.set("roleTitle", roleTitle);
-    fd.set("sector", sector);
+    fd.set("roleSlug", roleSlug);
     fd.set("seniority", seniority);
     fd.set("consentInterview", String(consentInterview));
     fd.set("consentRecording", String(consentRecording));
@@ -64,7 +83,12 @@ export default function ApplyPage() {
     try {
       const res = await fetch("/api/apply", { method: "POST", body: fd });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Upload failed.");
+      if (!res.ok) {
+        if (data.criteriaErrors) {
+          setCriteriaProblem({ file: data.criteriaFile, errors: data.criteriaErrors });
+        }
+        throw new Error(data.error ?? "Upload failed.");
+      }
       router.push(`/interview/${data.interviewId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -116,16 +140,25 @@ export default function ApplyPage() {
           </div>
           <div>
             <label className="text-sm">Role you are applying for</label>
-            <input
-              className="field mt-1.5" value={roleTitle} placeholder="Senior backend engineer"
-              onChange={(e) => setRoleTitle(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="text-sm">Sector</label>
-            <select className="field mt-1.5" value={sector} onChange={(e) => setSector(e.target.value)}>
-              {SECTORS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            <select
+              className="field mt-1.5" value={roleSlug} disabled={noRoles}
+              onChange={(e) => setRoleSlug(e.target.value)}
+            >
+              {!rolesLoaded && <option value="">Loading roles…</option>}
+              {noRoles && <option value="">No roles are open</option>}
+              {roles.map((r) => (
+                <option key={r.roleSlug} value={r.roleSlug} disabled={!r.available}>
+                  {r.roleTitle}
+                  {r.available ? "" : " — unavailable"}
+                </option>
+              ))}
             </select>
+            {selected?.available && (
+              <p className="mt-1.5 text-xs text-[var(--ink-faint)]">
+                Assessed against {selected.competencyCount} competencies set by this
+                company&apos;s hiring team.
+              </p>
+            )}
           </div>
           <div>
             <label className="text-sm">Level</label>
@@ -158,8 +191,40 @@ export default function ApplyPage() {
           />
         </fieldset>
 
+        {noRoles && (
+          <div className="panel border-[var(--warn)] p-4 text-sm">
+            <div className="text-[var(--warn)] font-medium">No roles are currently open.</div>
+            <p className="mt-1.5 text-xs text-[var(--ink-dim)] leading-relaxed">
+              Roles come from the assessment criteria files this company maintains. If you were
+              expecting one here, it has not been published yet.
+            </p>
+          </div>
+        )}
+
         {error && (
           <div className="panel border-[var(--bad)] p-4 text-sm text-[var(--bad)]">{error}</div>
+        )}
+
+        {/* Shown to the candidate because staying silent about a broken standard would
+            mean either a stalled application with no explanation, or an interview run
+            against criteria nobody validated. The detail is for whoever fixes the file. */}
+        {criteriaProblem && (
+          <div className="panel border-[var(--bad)] p-4 text-sm">
+            <div className="text-[var(--ink-dim)] text-xs">
+              For the criteria maintainer — {criteriaProblem.file}
+            </div>
+            <ul className="mt-2 space-y-2">
+              {criteriaProblem.errors.map((e, i) => (
+                <li key={i} className="text-xs leading-relaxed">
+                  <span className="font-mono text-[var(--warn)]">
+                    {e.line > 0 ? `line ${e.line}` : "file"}
+                  </span>{" "}
+                  <span className="text-[var(--ink)]">{e.message}</span>
+                  <div className="text-[var(--ink-faint)]">→ {e.fix}</div>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
 
         <button className="btn" disabled={!ready || busy}>

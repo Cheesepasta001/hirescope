@@ -4,7 +4,6 @@ import { describeApiError } from "@/lib/claude";
 import { nextTurn, type TurnRecord } from "@/lib/interview/engine";
 import type { InterviewPlan } from "@/lib/interview/plan";
 import type { ExtractedResume } from "@/lib/resume/schema";
-import type { SectorId } from "@/lib/interview/sectors";
 import { screenAnswer } from "@/lib/integrity/stylometry";
 import { MAX_TURNS_OVER_BUDGET } from "@/lib/gate";
 
@@ -103,13 +102,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
           + "detail this candidate could only know first-hand. Do not accuse or hint."
         : undefined;
 
-    const turn = await nextTurn({
-      plan,
-      resume,
-      sector: interview.sector as SectorId,
-      turns: history,
-      integrityNote,
-    });
+    const turn = await nextTurn({ plan, resume, turns: history, integrityNote });
 
     await db.turn.update({
       where: { id: answerTurn.id },
@@ -163,7 +156,10 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
       isFinalQuestion: isClosing,
     });
   } catch (error) {
-    const { status, message } = describeApiError(error);
-    return NextResponse.json({ error: message }, { status });
+    // The answer is already persisted above, so a model failure here costs the
+    // candidate a retry, not their words. `retryable` tells the client which
+    // message to show.
+    const { status, message, retryable } = describeApiError(error);
+    return NextResponse.json({ error: message, retryable }, { status });
   }
 }
