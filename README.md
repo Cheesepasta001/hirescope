@@ -6,10 +6,16 @@ and a searchable talent pool.
 A candidate uploads a resume. The system parses it into structured claims, checks
 it against itself, and builds an interview plan targeting the claims worth
 testing. It then runs an adaptive interview where every follow-up reacts to the
-answer that just arrived. Each answer is appraised as it lands. At the end you get
-a skill diagram, a written assessment, and tags that distinguish what the
-candidate *demonstrated* from what their resume merely *asserted* — which is what
-makes manager search worth anything.
+answer that just arrived, appraising each answer as it lands. Afterwards it sets
+a short practical task aimed at whatever the interview could not reach. What
+comes out is a candidate card — a score per competency with the quote behind it,
+an overall you can reproduce by hand, and tags that distinguish what the
+candidate *demonstrated* from what their resume merely *asserted*.
+
+**What gets assessed is not in the code.** Every competency, its definition, and
+its weight come from a markdown file the hiring team writes and edits. The model
+reads that standard; it never writes it. And the hire or reject call is never
+made here — the system produces evidence and a ranking, and a person decides.
 
 ---
 
@@ -42,29 +48,50 @@ not read from an env var, which is why it needs a script rather than config.
 
 ### Try it
 
-- **Candidate flow** — `/apply`, upload a PDF or DOCX resume, run the interview.
-- **Manager flow** — `/manager`, search `Software engineer who has experience with PyTorch`.
+- **Candidate flow** — `/apply`, upload `examples/example-resume.txt`, pick a role,
+  run the interview, then do the practical task it sets you.
+- **Candidate list** — `/manager/candidates`, every assessed candidate ranked by score.
+- **Search** — `/manager`, try `Software engineer who has experience with PyTorch`.
+- **Records** — open a candidate, then **Download the record**.
 - **Governance** — `/governance`, why the system is built this way.
+
+`examples/` has an invented resume and a set of prepared answers, so the whole
+path can be walked without inventing material on the spot.
+
+Roles come from `criteria/`. Edit `criteria/development.md`, reload `/apply`, and
+the interview changes — no code, no restart. See [criteria/README.md](criteria/README.md).
 
 ---
 
 ## How it works
 
 ```
-resume file
-   ↓  unpdf / mammoth
-raw text
+criteria/<role>.md            the standard, written and owned by the hiring team
+   ↓  parseCriteria()        validated, never repaired; a bad file stops the interview
+   ↓  resolveCriteria()      versioned by content hash, cached in the database
+ResolvedCriteria ───────────────────────────────┐
+                                                │
+resume file                                     │
+   ↓  unpdf / mammoth                           │
+raw text                                        │
    ↓  extractResume()        structured claims, skills tagged by how they are asserted
-ExtractedResume
+ExtractedResume                                 │
    ↓  checkConsistency()     timeline gaps, overlaps, skills listed but never described
-   ↓  buildPlan()            competency targets + resume probes, frozen for the interview
+   ↓  buildPlan()  ◄─────────────────────────────┘  freezes the criteria into the plan
 InterviewPlan
    ↓  nextTurn() × N         appraise the last answer, then decide the next question
 transcript + per-turn appraisals
-   ↓  buildAssessment()      competency scores with quoted evidence, tags, resume deltas
+   ↓  buildAssessment()      0-10 per competency, with a quote behind each
+   ↓  computeOverall()       weighted mean of the reached ones, rescaled to 0-100
    ↓  buildIntegrityReport() behavioural signals, kept out of scoring
+Assessment + CompetencyScore rows
+   ↓  generateHomework()     targets what the interview left unreached or thin
+   ↓  gradeHomework()        same criteria, same scale
+   ↓  recomputeAssessment()  the one path by which an overall score changes
 CandidateProfile + tags + embedding
-   ↓  search()               NL query → structured filter → ranked hits
+   ↓  /manager/candidates    ranked cards          → the manager decides
+   ↓  search()               NL query → filters → ranked hits
+   ↓  /api/.../export        the record, as a file
 ```
 
 ### The adaptive loop
@@ -78,18 +105,65 @@ The system prompt (interviewer instructions, competency definitions, the resume)
 is stable for the whole interview and marked with `cache_control`, so only the
 growing transcript tail is charged at full rate.
 
-### Sectors
+### The criteria file
 
-Ten sectors ship with their own competency frameworks — engineering, finance, HR,
-sales, product, healthcare, legal, operations, marketing, and a general fallback.
-Each defines what a strong answer looks like *and* what a weak one looks like, and
-both halves are fed to the question generator and the scorer. Add a sector by
-adding an entry to `SECTORS` in `src/lib/interview/sectors.ts`; nothing else needs
-to change.
+**The assessment standard is a markdown file the hiring team owns, not code.**
+One file per role in `criteria/`, and a role exists exactly when its file does.
+Each competency carries a stable key, a display name, what it means, what a
+strong answer looks like, what a weak one looks like, and a priority that sets
+its weight in the score.
 
-Every interview also covers four universal competencies — logical reasoning,
-communication, ownership, collaboration — because those are what cross-candidate
-comparison actually runs on.
+Three ship, matching the job families in the brief: `development`,
+`education-planning`, `b2b-sales`. Format and worked example are in
+[criteria/README.md](criteria/README.md); `criteria/_TEMPLATE.md` is the blank.
+
+```bash
+npm run criteria:check
+```
+
+Validates every file with no database and no API key, and reports the line and
+the fix for anything wrong. **The parser never repairs.** No default priority,
+no inferred competency, no close-enough key — a file that quietly corrected
+itself would stop being the standard the person wrote.
+
+Editing a file changes what the next interview asks about, with no code change
+and no restart. It does *not* touch assessments already made: a changed file
+hashes differently and becomes a new version, and every interview stays pinned
+to the version in force when it started. That is what makes "what standard was
+this person held to" answerable months later.
+
+The four general competencies — reasoning, communication, ownership,
+collaboration — used to be appended from code to every interview. They are now
+written out in each criteria file like any other competency, so they can be
+reweighted or removed. Nothing is added behind the editor's back.
+
+### Scoring
+
+Each competency is scored **0–10**. Its priority sets its weight — **high 3,
+medium 2, low 1** — and the overall is the weighted mean of the competencies
+that were actually *reached*, rescaled to 0–100.
+
+Unreached competencies are **excluded from the mean, not scored zero**, and
+every report carries the count the score rests on ("6 of 8 competencies"). The
+model does not produce the overall score; `src/lib/assess/scoring.ts` does, and
+it is the only place that arithmetic exists.
+
+### Homework
+
+After the interview, a short practical task generated from the role's criteria
+and the gaps that interview left. Which competencies it targets is decided
+deterministically from the coverage that actually happened, not by the model.
+
+Capped under an hour, clamped in code. It cannot ask for work the company would
+otherwise pay for. Graded against the same criteria on the same scale, and where
+the interview and the task both covered a competency the two are **averaged, not
+added**.
+
+### Records
+
+`GET /api/interview/[id]/export` returns the whole thing as one markdown file —
+criteria version applied, consent, full transcript, homework and submission, and
+every score with its evidence quote. The database stays the source of truth.
 
 ### Evidence, not vibes
 
@@ -199,17 +273,26 @@ feel responsive.
 ```
 prisma/schema.prisma          data model; Postgres-portable
 prisma/seed.ts                six invented candidates, no API calls
+criteria/                     THE assessment standard — see criteria/README.md
+examples/                     an invented resume and prepared answers for the demo
 src/lib/claude.ts             SDK client, model + effort constants, error mapping
 src/lib/resume/               text extraction, Zod schema, structured extraction
-src/lib/interview/            sector frameworks, plan builder, adaptive engine
+src/lib/criteria/             the markdown parser and the versioned loader
+src/lib/interview/            plan builder, adaptive engine, abandonment rule
 src/lib/integrity/            non-biometric signals, stylometry screen
 src/lib/verify/               resume self-consistency, consented link checks
-src/lib/assess/score.ts       final assessment, skill diagram data, tags
+src/lib/assess/scoring.ts     THE scoring rule — weights, weighted mean, nothing else
+src/lib/assess/score.ts       final assessment, card data, tags
+src/lib/assess/recompute.ts   the only path by which an overall score changes
+src/lib/homework/             task generation and grading
 src/lib/search/query.ts       NL query → filters → ranked hits
 src/lib/embeddings.ts         Voyage, with a local lexical fallback
-src/app/api/                  apply, turn, signal, finish, report, search, candidate
-src/app/                      landing, apply, interview, manager, governance
-src/components/SkillRadar.tsx skill diagram; draws confidence, not just score
+src/app/api/                  apply, turn, signal, finish, report, homework, export,
+                              search, candidate(s), roles, config
+src/app/                      landing, apply, interview, homework, manager,
+                              candidate list, governance
+src/components/SkillRadar.tsx skill diagram; axes from the criteria file
+src/components/CandidateCard  the card the list and the report share
 ```
 
 ### Model usage
@@ -242,15 +325,24 @@ learning framework`. The manager UI says which mode is active.
 
 ## Status
 
-Working end to end: upload, extraction, consistency checks, plan, adaptive
-interview, per-turn appraisal, integrity report, assessment, skill diagram, tags,
-NL search, manager report, candidate self-report with rebuttal.
+Working end to end: file-driven criteria with validation, upload, extraction,
+consistency checks, frozen plan, adaptive interview, per-turn appraisal,
+integrity report, weighted assessment, dynamic skill diagram, tags, homework
+generation and grading, the candidate card and ranked list, NL search, manager
+report, candidate self-report with rebuttal, and the exportable record.
 
 Not built, and listed with the reasoning in `/governance`: bias audit tooling
-(NYC Local Law 144), retention and deletion policy, real authentication on both
-sides, and the EU AI Act Annex III high-risk documentation set. The consent
-records, frozen interview plans, and per-turn appraisals are the raw material for
-that documentation, but they are not a substitute for it.
+(NYC Local Law 144), a retention policy beyond the abandonment rule, real
+authentication on both sides, and the EU AI Act Annex III high-risk documentation
+set. The consent records, versioned criteria sets, frozen interview plans, and
+per-turn appraisals are the raw material for that documentation, but they are not
+a substitute for it.
+
+Nothing validates a criteria file for *fairness*. The parser checks that it is
+well-formed; whether a competency is a proxy for something protected, or whether
+its weak-answer wording penalises a way of speaking rather than a way of
+thinking, is a human review this does not do for you. The criteria file is now
+the most consequential artefact in the system.
 
 This is an engineering artefact, not legal advice. The rules here are moving
 quickly and differ by jurisdiction — get counsel in your target markets before
