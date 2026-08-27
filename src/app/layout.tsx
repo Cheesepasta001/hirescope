@@ -23,7 +23,7 @@ export default function RootLayout({
             </Link>
             <nav className="flex gap-5 text-sm text-[var(--ink-dim)]">
               <Link href="/apply" className="hover:text-[var(--ink)]">
-                Interview
+                Apply
               </Link>
               <Link href="/manager" className="hover:text-[var(--ink)]">
                 Search
