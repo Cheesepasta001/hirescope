@@ -3,6 +3,7 @@
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { SkillRadar, type RadarPoint } from "@/components/SkillRadar";
+import { CrossRolePanel, type CrossRoleRead } from "@/components/CrossRolePanel";
 
 type Report = {
   ready: boolean;
@@ -17,6 +18,7 @@ type Report = {
   concerns: string[];
   findings: { id: string; kind: string; severity: string; detail: string; response: string | null }[];
   integrity: { band: string; observations: string[]; caveat: string } | null;
+  crossRoleReads: CrossRoleRead[];
   homework: {
     generated: boolean;
     estimatedMinutes: number | null;
@@ -181,6 +183,25 @@ export default function DonePage({ params }: { params: Promise<{ id: string }> }
               </div>
             ))}
           </div>
+        </section>
+      )}
+
+      {/* The same principle the whole report runs on: the candidate sees what
+          the manager sees. If someone read this interview against a role they
+          did not apply for, they get to read it too. */}
+      {report.crossRoleReads?.length > 0 && (
+        <section className="space-y-4">
+          <div>
+            <h2 className="font-medium">Considered for other roles</h2>
+            <p className="mt-1 text-sm text-[var(--ink-dim)] leading-relaxed">
+              You agreed to be considered for other roles, so a hiring manager has read this
+              same interview against the criteria below. Nothing extra was asked of you, and
+              this does not replace your application for {report.roleTitle}.
+            </p>
+          </div>
+          {report.crossRoleReads.map((r) => (
+            <CrossRolePanel key={r.id} read={r} interviewedForTitle={report.roleTitle} />
+          ))}
         </section>
       )}
 

@@ -4,12 +4,20 @@ import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { SkillRadar, round, RADAR_MAX, type RadarPoint } from "@/components/SkillRadar";
 import { CandidateCard, recommendationLabel, recommendationColor } from "@/components/CandidateCard";
+import { CrossRolePanel, type CrossRoleRead } from "@/components/CrossRolePanel";
+
+type CrossRoleState = {
+  consented: boolean;
+  interviewedFor: string | null;
+  availableRoles: { roleSlug: string; roleTitle: string }[];
+  reads: CrossRoleRead[];
+};
 
 type Report = {
   candidate: {
     id: string; name: string; email: string; phone: string | null; location: string | null;
     headline: string; yearsExperience: number;
-    consent: { interview: boolean; recording: boolean; linkCheck: boolean; at: string | null; policyVersion: string | null };
+    consent: { interview: boolean; recording: boolean; linkCheck: boolean; crossRole: boolean; at: string | null; policyVersion: string | null };
   };
   interview: { id: string; roleTitle: string; roleSlug: string | null; sector: string; seniority: string; completedAt: string | null; questionCount: number };
   criteria: {
@@ -46,6 +54,13 @@ export default function CandidateReport({ params }: { params: Promise<{ id: stri
   const [error, setError] = useState<string | null>(null);
   const [showTranscript, setShowTranscript] = useState(false);
 
+  // Cross-role state. Loaded alongside the report but never computed on load —
+  // opening a candidate must not spend a model call.
+  const [crossRole, setCrossRole] = useState<CrossRoleState | null>(null);
+  const [compareTo, setCompareTo] = useState("");
+  const [comparing, setComparing] = useState(false);
+  const [crossRoleError, setCrossRoleError] = useState<string | null>(null);
+
   useEffect(() => {
     const passcode = sessionStorage.getItem("hs_passcode") ?? "";
     (async () => {
@@ -54,11 +69,52 @@ export default function CandidateReport({ params }: { params: Promise<{ id: stri
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "Could not load this report.");
         setReport(data);
+
+        const cr = await fetch(
+          `/api/candidate/${id}/cross-role?passcode=${encodeURIComponent(passcode)}`,
+        );
+        if (cr.ok) setCrossRole(await cr.json());
       } catch (err) {
         setError(err instanceof Error ? err.message : "Could not load this report.");
       }
     })();
   }, [id]);
+
+  async function runCompare() {
+    if (!compareTo) return;
+    setComparing(true);
+    setCrossRoleError(null);
+    try {
+      const res = await fetch(`/api/candidate/${id}/cross-role`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          passcode: sessionStorage.getItem("hs_passcode") ?? "",
+          roleSlug: compareTo,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not compare against that role.");
+      // Newest first, and replacing any existing read for the same role so a
+      // repeat request does not render twice.
+      setCrossRole((s) =>
+        s
+          ? {
+              ...s,
+              reads: [
+                data.read,
+                ...s.reads.filter((r) => r.targetRoleSlug !== data.read.targetRoleSlug),
+              ],
+            }
+          : s,
+      );
+      setCompareTo("");
+    } catch (err) {
+      setCrossRoleError(err instanceof Error ? err.message : "Could not compare against that role.");
+    } finally {
+      setComparing(false);
+    }
+  }
 
   if (error) {
     return (
@@ -296,6 +352,73 @@ export default function CandidateReport({ params }: { params: Promise<{ id: stri
         </section>
       )}
 
+      {/* Cross-role fit. Placed after the primary assessment and the homework,
+          because it is secondary evidence and the ordering of the page should
+          say so before any label does. */}
+      <section className="space-y-4">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-medium">Compare against another role</h2>
+            <p className="mt-1 text-xs text-[var(--ink-faint)] max-w-2xl leading-relaxed">
+              Reads this candidate&apos;s existing interview against a different role&apos;s
+              criteria. No new interview and nothing asked of the candidate. The system does
+              not suggest roles — you ask, it answers with whatever the transcript supports.
+            </p>
+          </div>
+
+          {crossRole?.consented && crossRole.availableRoles.length > 0 && (
+            <div className="flex gap-2">
+              <select
+                className="field sm:w-56" value={compareTo} disabled={comparing}
+                onChange={(e) => setCompareTo(e.target.value)}
+              >
+                <option value="">Pick a role…</option>
+                {crossRole.availableRoles.map((r) => (
+                  <option key={r.roleSlug} value={r.roleSlug}>{r.roleTitle}</option>
+                ))}
+              </select>
+              <button
+                className="btn shrink-0" disabled={!compareTo || comparing}
+                onClick={() => void runCompare()}
+              >
+                {comparing ? "Reading…" : "Compare"}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {crossRole && !crossRole.consented && (
+          <div className="panel border-dashed p-4 text-xs text-[var(--ink-dim)] leading-relaxed">
+            <span className="text-[var(--warn)]">Unavailable.</span> This candidate did not tick
+            &ldquo;also consider me for other roles&rdquo; when they applied, so their interview
+            cannot be read against a role they did not apply for. Consent here is per-purpose and
+            recorded with a timestamp, the same as the rest.
+          </div>
+        )}
+
+        {crossRoleError && (
+          <div className="panel border-[var(--bad)] p-4 text-sm text-[var(--bad)]">
+            {crossRoleError}
+          </div>
+        )}
+
+        {comparing && (
+          <p className="text-xs text-[var(--ink-faint)]">
+            Reading the transcript against that role&apos;s criteria — about half a minute.
+          </p>
+        )}
+
+        {crossRole?.consented && crossRole.reads.length === 0 && !comparing && (
+          <p className="text-xs text-[var(--ink-faint)]">
+            No comparisons requested yet.
+          </p>
+        )}
+
+        {crossRole?.reads.map((r) => (
+          <CrossRolePanel key={r.id} read={r} interviewedForTitle={interview.roleTitle} />
+        ))}
+      </section>
+
       <section className="panel p-5">
         <h2 className="text-sm font-medium">Tags</h2>
         <p className="mt-1 text-xs text-[var(--ink-faint)]">
@@ -380,6 +503,7 @@ export default function CandidateReport({ params }: { params: Promise<{ id: stri
           <div>AI interview and assessment: {yn(candidate.consent.interview)}</div>
           <div>Session integrity monitoring: {yn(candidate.consent.recording)}</div>
           <div>Link verification: {yn(candidate.consent.linkCheck)}</div>
+          <div>Consideration for other roles: {yn(candidate.consent.crossRole)}</div>
           <div>
             Recorded: {candidate.consent.at ? new Date(candidate.consent.at).toLocaleString() : "—"}
             {candidate.consent.policyVersion ? ` (policy ${candidate.consent.policyVersion})` : ""}

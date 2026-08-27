@@ -4,6 +4,7 @@ import path from "node:path";
 import { db } from "@/lib/db";
 import {
   parseCriteria,
+  definitionHash,
   formatCriteriaErrors,
   type CriteriaError,
   type ParsedCriteria,
@@ -67,6 +68,8 @@ export type CriteriaCompetency = {
   strongAnswer: string;
   weakAnswer: string;
   priority: Priority;
+  /** Identity of the definition text. Cross-role transfer matches on key + this. */
+  definitionHash: string;
 };
 
 /**
@@ -158,11 +161,33 @@ export async function resolveCriteria(roleSlug: string): Promise<ResolvedCriteri
           weakAnswer: c.weakAnswer,
           priority: c.priority,
           orderIndex: c.orderIndex,
+          definitionHash: c.definitionHash,
         })),
       },
     },
     include: { competencies: { orderBy: { orderIndex: "asc" } } },
   }));
+
+  // Backfill for criteria sets stored before definitionHash existed. Without
+  // this, Path A of a cross-role read silently never matches for any older row
+  // and every competency gets re-scored — which looks like it works, produces
+  // slightly different numbers for identical definitions, and is exactly the
+  // "communication 7 here, 8 there" failure transfer exists to prevent.
+  //
+  // Safe to recompute: the hash is derived entirely from text already in the
+  // row, so this repairs a missing value rather than changing a meaning.
+  const stale = row.competencies.filter((c) => !c.definitionHash);
+  if (stale.length > 0) {
+    await Promise.all(
+      stale.map((c) =>
+        db.criteriaCompetency.update({
+          where: { id: c.id },
+          data: { definitionHash: definitionHash(c) },
+        }),
+      ),
+    );
+    for (const c of stale) c.definitionHash = definitionHash(c);
+  }
 
   const resolved: ResolvedCriteria = {
     criteriaSetId: row.id,
@@ -179,6 +204,7 @@ export async function resolveCriteria(roleSlug: string): Promise<ResolvedCriteri
       strongAnswer: c.strongAnswer,
       weakAnswer: c.weakAnswer,
       priority: c.priority as Priority,
+      definitionHash: c.definitionHash,
     })),
   };
 

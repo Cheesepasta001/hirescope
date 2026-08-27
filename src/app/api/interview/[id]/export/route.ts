@@ -31,7 +31,18 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
     include: {
       candidate: true,
       turns: { orderBy: { idx: "asc" } },
-      assessment: { include: { scores: true } },
+      assessment: {
+        include: {
+          scores: true,
+          crossRoleReads: {
+            include: {
+              scores: { orderBy: { orderIndex: "asc" } },
+              targetCriteriaSet: { select: { roleTitle: true, version: true } },
+            },
+            orderBy: { createdAt: "asc" },
+          },
+        },
+      },
       criteriaSet: { include: { competencies: { orderBy: { orderIndex: "asc" } } } },
       homework: { include: { submission: true } },
     },
@@ -194,6 +205,40 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
     }
   } else {
     push(`## Assessment`, "", "_This interview was not assessed._", "");
+  }
+
+  // Cross-role reads are part of what the manager saw, so they belong in the
+  // record. Marked as secondary here as forcefully as they are on screen.
+  for (const read of a?.crossRoleReads ?? []) {
+    push(
+      `## Cross-role read — ${read.targetCriteriaSet.roleTitle}`,
+      "",
+      `_Requested ${read.createdAt.toISOString()}. This candidate was interviewed for `
+        + `${interview.roleTitle}, not for ${read.targetCriteriaSet.roleTitle}. The questions `
+        + `for that role were never asked, so this is weaker evidence than a first-hand `
+        + `assessment and must not be compared directly against candidates who interviewed `
+        + `for it._`,
+      "",
+      read.overallScore === null
+        ? `**No overall score** — insufficient overlap. Evidence covers `
+          + `${read.evidencedCount} of ${read.targetCompetencyCount} competencies `
+          + `(${read.evidencedWeight} of ${read.targetTotalWeight} weight), of which `
+          + `${read.roleSpecificEvidenced} are specific to that role.`
+        : `**Indicative score: ${read.overallScore}/100** — resting on `
+          + `${read.evidencedCount} of ${read.targetCompetencyCount} competencies `
+          + `(${read.evidencedWeight} of ${read.targetTotalWeight} weight).`,
+      "",
+      read.summary,
+      "",
+      "| Competency | Where the score came from | Score | Evidence |",
+      "| --- | --- | --- | --- |",
+      ...read.scores.map((s) =>
+        `| ${s.label} | ${s.origin.replace(/_/g, " ")} | `
+        + `${s.score === null ? "—" : `${round(s.score)}/10`} | `
+        + `${escapeCell(s.evidenceQuote ?? "")} |`,
+      ),
+      "",
+    );
   }
 
   push(

@@ -11,6 +11,11 @@ export type RadarPoint = {
   priority?: string;
   /** Which stage produced the score. Homework scores are labelled in the detail view. */
   source?: "interview" | "homework";
+  /**
+   * Cross-role reads only. Undefined on a primary assessment, which is why
+   * nothing about the existing diagram changes.
+   */
+  origin?: "transferred" | "rescored" | "not_evidenced";
   evidence?: string;
   note?: string;
 };
@@ -32,6 +37,11 @@ export const RADAR_MAX = 10;
  *     scored zero on three.
  *   - **Low-confidence scores** get a hollow marker, so a thinly-evidenced 8
  *     does not read the same as a well-evidenced 8.
+ *
+ * Cross-role reads extend that vocabulary rather than replacing it: marker
+ * shape carries where a score came from (circle = carried across unchanged,
+ * diamond = read out of a transcript recorded for another role), while fill
+ * still carries confidence and a dashed spoke still means nothing to draw.
  */
 export function SkillRadar({ points, size = 380 }: { points: RadarPoint[]; size?: number }) {
   const n = points.length;
@@ -60,7 +70,9 @@ export function SkillRadar({ points, size = 380 }: { points: RadarPoint[]; size?
   const radiusFor = (score: number) =>
     (Math.max(0, Math.min(RADAR_MAX, score)) / RADAR_MAX) * r;
 
-  const isReached = (p: RadarPoint) => p.reached !== false;
+  // A cross-role point may carry only an origin; not_evidenced is the same
+  // "nothing to draw here" state as an unreached competency.
+  const isReached = (p: RadarPoint) => p.reached !== false && p.origin !== "not_evidenced";
   const reached = points.map(isReached);
   const reachedCount = reached.filter(Boolean).length;
 
@@ -108,13 +120,37 @@ export function SkillRadar({ points, size = 380 }: { points: RadarPoint[]; size?
         if (!isReached(p)) return null;
         const pt = at(i, radiusFor(p.score));
         const low = p.confidence === "low";
+        const fill = low ? "var(--bg)" : "var(--accent)";
+        const title = (
+          <title>
+            {`${p.label}: ${round(p.score)}/${RADAR_MAX} (${p.confidence} confidence`
+            + `${p.origin === "rescored" ? ", read from a transcript for another role" : ""}`
+            + `${p.origin === "transferred" ? ", carried across unchanged" : ""})`}
+          </title>
+        );
+
+        // Marker shape carries origin; fill still carries confidence. Extending
+        // the existing vocabulary rather than replacing it means a reader who
+        // already knows what a hollow marker means does not have to relearn it.
+        if (p.origin === "rescored") {
+          const d = 4.5;
+          return (
+            <polygon
+              key={p.competencyId}
+              points={`${pt.x},${pt.y - d} ${pt.x + d},${pt.y} ${pt.x},${pt.y + d} ${pt.x - d},${pt.y}`}
+              fill={fill} stroke="var(--accent)" strokeWidth="2" strokeLinejoin="round"
+            >
+              {title}
+            </polygon>
+          );
+        }
+
         return (
           <circle
             key={p.competencyId} cx={pt.x} cy={pt.y} r="4"
-            fill={low ? "var(--bg)" : "var(--accent)"}
-            stroke="var(--accent)" strokeWidth="2"
+            fill={fill} stroke="var(--accent)" strokeWidth="2"
           >
-            <title>{`${p.label}: ${round(p.score)}/${RADAR_MAX} (${p.confidence} confidence)`}</title>
+            {title}
           </circle>
         );
       })}

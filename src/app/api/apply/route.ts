@@ -68,6 +68,7 @@ export async function POST(request: Request) {
     const consentInterview = form.get("consentInterview") === "true";
     const consentRecording = form.get("consentRecording") === "true";
     const consentLinkCheck = form.get("consentLinkCheck") === "true";
+    const consentCrossRole = form.get("consentCrossRole") === "true";
 
     if (!consentInterview) {
       return NextResponse.json(
@@ -92,6 +93,7 @@ export async function POST(request: Request) {
         consentInterview,
         consentRecording,
         consentLinkCheck,
+        consentCrossRole,
         consentedAt: new Date(),
         consentPolicyVer: POLICY_VERSION,
       },
@@ -100,6 +102,7 @@ export async function POST(request: Request) {
         consentInterview,
         consentRecording,
         consentLinkCheck,
+        consentCrossRole,
         consentedAt: new Date(),
         consentPolicyVer: POLICY_VERSION,
       },

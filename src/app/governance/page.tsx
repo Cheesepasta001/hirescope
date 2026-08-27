@@ -33,7 +33,7 @@ const DESIGNED = [
   },
   {
     t: "Per-purpose consent, recorded with a version",
-    d: "Interview, integrity monitoring, and link verification are separate opt-ins with the policy version and timestamp stored. Declining integrity monitoring does not affect the assessment.",
+    d: "Interview, integrity monitoring, link verification, and consideration for other roles are separate opt-ins, each with the policy version and timestamp stored. Declining integrity monitoring does not affect the assessment; declining cross-role consideration only means the compare control is unavailable, and the manager is told why rather than seeing it silently missing.",
   },
   {
     t: "Candidate sees their own report",
@@ -50,6 +50,14 @@ const DESIGNED = [
   {
     t: "Evidence-bound scoring",
     d: "Every competency score carries a quote and a confidence level. Where the interview did not reach a competency, the report says so instead of producing a confident number.",
+  },
+  {
+    t: "Cross-role reads are secondary, consented, and never volunteered",
+    d: "A manager can ask how a candidate's existing interview reads against a different role, which avoids putting someone through a second interview to answer a question about the first. Three constraints hold it in place. It runs only where the candidate ticked “also consider me for other roles”, recorded per-purpose with a timestamp like every other consent here. The system never initiates it, never suggests a role, and never reassigns anyone — the manager asks, the system answers with whatever the transcript supports. And nothing it produces touches the ranked list, the profile score, or the recommendation, because a score derived from questions that were never asked must not move the primary ranking.",
+  },
+  {
+    t: "A cross-role score is refused when the overlap is too thin",
+    d: "A score carries between roles only where the two criteria files define a competency identically; everything else is re-read from the transcript, and marked as having no evidence where the transcript says nothing. Because the general competencies are shared across every role, they alone reach about half of any role's weight while saying nothing about fit for it — so an overall number is withheld unless at least two role-specific competencies were evidenced and the evidence covers 60% of the role's weight. Below that the per-competency detail is shown with no number and the reason stated. Declining to answer is the correct output, not a limitation.",
   },
   {
     t: "A record that leaves the system",
@@ -71,6 +79,7 @@ const HUMAN_DECISION = [
   "The system produces a ranked list, a score, a recommendation, and the evidence behind each. It does not advance, reject, shortlist, or auto-reply to anyone.",
   "Nothing is hidden from the manager on the basis of a score. The candidate list defaults to everyone; filtering is the reader's explicit choice and the header always says how many were filtered out.",
   "Ranking is the only relative judgement anywhere in the system. A candidate's own recommendation is derived from their own evidence alone, so it cannot move because somebody else applied.",
+  "Cross-role fit is asked for, never offered. The system does not scan the pool for better-suited people, does not suggest a role, and does not move anyone between roles. A manager who wants that question answered has to ask it about a named candidate and a named role.",
   "The recommendation is a chip on a card, never a gate. 'Insufficient evidence' is a real option and is applied automatically when no competency was reached.",
   "Both the manager report and the candidate's own copy say on the page that this is decision support and that a person makes the call.",
 ];
@@ -91,6 +100,10 @@ const REMAINING = [
   {
     t: "Retention beyond abandonment",
     d: "Abandoned attempts are handled — offered a retry, then deleted after 72 hours. Nothing else is. Decide how long completed transcripts and assessments live, implement deletion on request, and run it on a schedule; the purge script exists but this app has no scheduler and deliberately does not invent one. The schema uses onDelete: Cascade, so a candidate delete already removes resumes, interviews, turns, homework, and tags with it.",
+  },
+  {
+    t: "Cross-role reads are not audited as a selection tool",
+    d: "If cross-role reads ever influence who gets contacted, they are part of the selection process and fall inside the same bias-audit and notice obligations as the primary assessment — they are not a separate, lighter thing because they are labelled secondary. Nothing here tracks how often they are requested, for which candidates, or with what effect on outcomes. That instrumentation is the prerequisite for auditing them at all.",
   },
   {
     t: "Nobody validates a criteria file for fairness",

@@ -77,6 +77,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
         interview: candidate.consentInterview,
         recording: candidate.consentRecording,
         linkCheck: candidate.consentLinkCheck,
+        crossRole: candidate.consentCrossRole,
         at: candidate.consentedAt,
         policyVersion: candidate.consentPolicyVer,
       },
