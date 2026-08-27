@@ -477,6 +477,13 @@ async function main() {
       },
     });
 
+    // Backdated, and deliberately so. startedAt defaults to now(), and the daily
+    // spend cap in src/lib/gate.ts counts interviews started since midnight UTC
+    // — so demo rows created at deploy time would eat a real candidate's slot,
+    // and every redeploy would eat six more. Dated a week back, they never
+    // collide with a live cap.
+    const seededAt = new Date(Date.now() - 7 * 24 * 3600 * 1000);
+
     const interview = await db.interview.create({
       data: {
         candidateId: candidate.id,
@@ -487,7 +494,8 @@ async function main() {
         roleTitle: criteria.roleTitle,
         seniority: s.seniority,
         status: "completed",
-        completedAt: new Date(),
+        startedAt: seededAt,
+        completedAt: seededAt,
         plan: JSON.stringify({
           criteria: {
             criteriaSetId: criteria.criteriaSetId,
