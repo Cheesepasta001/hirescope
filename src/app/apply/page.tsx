@@ -25,6 +25,7 @@ export default function ApplyPage() {
   const [consentInterview, setConsentInterview] = useState(false);
   const [consentRecording, setConsentRecording] = useState(false);
   const [consentLinkCheck, setConsentLinkCheck] = useState(false);
+  const [consentCrossRole, setConsentCrossRole] = useState(false);
   const [inviteCode, setInviteCode] = useState("");
   const [inviteRequired, setInviteRequired] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -78,6 +79,7 @@ export default function ApplyPage() {
     fd.set("consentInterview", String(consentInterview));
     fd.set("consentRecording", String(consentRecording));
     fd.set("consentLinkCheck", String(consentLinkCheck));
+    fd.set("consentCrossRole", String(consentCrossRole));
     fd.set("inviteCode", inviteCode.trim());
 
     try {
@@ -188,6 +190,11 @@ export default function ApplyPage() {
             checked={consentLinkCheck} onChange={setConsentLinkCheck}
             label="I agree to verification of the professional links on my resume."
             detail="We check only URLs you put on your own resume — a public GitHub profile, ORCID, or portfolio — to confirm they exist and are reachable. We do not search for you, and we do not look at social media. Anything we find is shown to you before it is shown to anyone else."
+          />
+          <Consent
+            checked={consentCrossRole} onChange={setConsentCrossRole}
+            label="Also consider me for other roles."
+            detail="If a hiring manager thinks your background might suit a different role here, they can have this same interview read against that role's criteria. It never means another interview, and it never replaces your application for the role you chose. The result is marked as weaker evidence because the questions for that role were not the ones you were asked, and you can see it in your own report."
           />
         </fieldset>
 

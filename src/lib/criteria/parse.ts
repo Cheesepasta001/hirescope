@@ -18,8 +18,66 @@
  * step — that document is the contract, this file is the enforcement.
  */
 
+import { createHash } from "node:crypto";
+
 export const PRIORITIES = ["high", "medium", "low"] as const;
 export type Priority = (typeof PRIORITIES)[number];
+
+/**
+ * The four competencies every shipped criteria file carries.
+ *
+ * This is a policy constant about a *rule*, not a claim about the standard: the
+ * cross-role coverage floor has to know which competencies say nothing about
+ * role fit, and these are they. They are still defined in each file like any
+ * other competency, and a company that deletes one from a file simply has a
+ * role that does not assess it.
+ *
+ * Note what this list is NOT used for: it does not decide what gets asked,
+ * scored, or weighted. Only whether a cross-role read has enough role-specific
+ * evidence to justify showing a number.
+ */
+export const GENERAL_COMPETENCY_KEYS: readonly string[] = [
+  "logical_reasoning",
+  "communication",
+  "ownership",
+  "collaboration",
+];
+
+export function isGeneralCompetency(key: string): boolean {
+  return GENERAL_COMPETENCY_KEYS.includes(key);
+}
+
+/**
+ * A stable identity for what a competency *means*, as opposed to what it is
+ * called.
+ *
+ * Cross-role transfer depends on this. Two files can use the key
+ * `communication` and define it differently — the shipped registered-nurse file
+ * does exactly that, adding a note about second-language register — and a score
+ * against one definition must not silently carry to the other.
+ *
+ * Whitespace is collapsed before hashing so that reflowing a paragraph in an
+ * editor does not invalidate every score that transferred under it. Wording
+ * changes do; formatting changes do not.
+ */
+export function definitionHash(parts: {
+  description: string;
+  strongAnswer: string;
+  weakAnswer: string;
+}): string {
+  const normalise = (text: string) => text.replace(/\r\n?/g, "\n").replace(/\s+/g, " ").trim();
+  return createHash("sha256")
+    .update(
+      [parts.description, parts.strongAnswer, parts.weakAnswer]
+        .map(normalise)
+        // A separator that cannot appear in the normalised text, so that
+        // moving a sentence from the end of one field to the start of the
+        // next changes the hash instead of leaving it identical.
+        .join("\u0000"),
+    )
+    .digest("hex")
+    .slice(0, 16);
+}
 
 export const SECTOR_IDS = [
   "engineering", "finance", "hr", "sales", "product",
@@ -35,6 +93,8 @@ export type ParsedCompetency = {
   weakAnswer: string;
   priority: Priority;
   orderIndex: number;
+  /** Identity of the definition text. Cross-role transfer depends on it. */
+  definitionHash: string;
   /** Line the heading sits on, so errors can point back at it. */
   line: number;
 };
@@ -345,6 +405,11 @@ function readOneCompetency(
     weakAnswer: prose.weakAnswer,
     priority: (priorityRaw as string).toLowerCase() as Priority,
     orderIndex,
+    definitionHash: definitionHash(prose as {
+      description: string;
+      strongAnswer: string;
+      weakAnswer: string;
+    }),
     line: headingLine,
   };
 }

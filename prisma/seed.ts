@@ -393,10 +393,14 @@ async function main() {
         consentInterview: true,
         consentRecording: true,
         consentLinkCheck: false,
+        // So the cross-role compare control is exercisable straight after a seed.
+        consentCrossRole: true,
         consentedAt: new Date(),
         consentPolicyVer: "2026-08-23",
       },
-      update: { name: s.name, phone: s.phone, location: s.location },
+      update: {
+        name: s.name, phone: s.phone, location: s.location, consentCrossRole: true,
+      },
     });
 
     const searchText = [

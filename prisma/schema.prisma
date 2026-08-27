@@ -41,9 +41,10 @@ model CriteriaSet {
   version    Int      @default(1) // from the file's frontmatter, for humans
   parsedAt   DateTime @default(now())
 
-  competencies CriteriaCompetency[]
-  interviews   Interview[]
-  assessments  Assessment[]
+  competencies   CriteriaCompetency[]
+  interviews     Interview[]
+  assessments    Assessment[]
+  crossRoleReads CrossRoleRead[]
 
   @@unique([roleSlug, sourceHash])
   @@index([roleSlug])
@@ -54,17 +55,22 @@ model CriteriaCompetency {
   criteriaSetId String
   criteriaSet   CriteriaSet @relation(fields: [criteriaSetId], references: [id], onDelete: Cascade)
 
-  key          String // stable id; scores are recorded against this
-  label        String
-  description  String
+  key            String // stable id; scores are recorded against this
+  label          String
+  description    String
   // Both halves are load-bearing: they feed the question generator *and* the
   // scorer. Dropping the weak half measurably degrades scoring quality.
-  strongAnswer String
-  weakAnswer   String
-  priority     String // high | medium | low -> weight 3 | 2 | 1
-  orderIndex   Int
+  strongAnswer   String
+  weakAnswer     String
+  priority       String // high | medium | low -> weight 3 | 2 | 1
+  orderIndex     Int
+  // Identity of the definition text, whitespace-normalised. Two files can share
+  // a key and mean different things by it, so cross-role transfer matches on
+  // key AND this. See src/lib/criteria/parse.ts.
+  definitionHash String @default("")
 
   @@unique([criteriaSetId, key])
+  @@index([key, definitionHash])
 }
 
 // One candidate, one competency, one source. Rows rather than JSON because the
@@ -114,7 +120,7 @@ model Homework {
   // strong/weak text. Written at generation time so grading is held to the same
   // standard the task was written against.
   expectations     String // JSON
-  estimatedMinutes Int    @default(30)
+  estimatedMinutes Int      @default(30)
   createdAt        DateTime @default(now())
 
   submission HomeworkSubmission?
@@ -138,6 +144,78 @@ model HomeworkSubmission {
   pasteCount  Int       @default(0)
 }
 
+// ---------------------------------------------------------------------------
+// Cross-role fit.
+//
+// A manager viewing a candidate asks "how does this person look against role X?"
+// and the answer is read out of the interview that already happened. No new
+// interview, no new candidate time.
+//
+// Every value here is strictly secondary. Nothing in this section is allowed to
+// touch CandidateProfile.overallScore, the ranked list, or
+// Assessment.recommendation — a score derived from questions that were never
+// asked must not move the primary ranking. See src/lib/assess/crossRole.ts.
+// ---------------------------------------------------------------------------
+
+model CrossRoleRead {
+  id          String    @id @default(cuid())
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  sourceAssessmentId String
+  sourceAssessment   Assessment @relation(fields: [sourceAssessmentId], references: [id], onDelete: Cascade)
+
+  targetCriteriaSetId   String
+  targetCriteriaSet     CriteriaSet @relation(fields: [targetCriteriaSetId], references: [id], onDelete: Cascade)
+  // Denormalised from the criteria set so the cache key is readable, and so a
+  // re-read is forced when HR edits the target role's file.
+  targetCriteriaVersion Int
+
+  // Null below the coverage floor. A tool that says "I cannot tell you this" is
+  // a better answer than one that always produces a number.
+  overallScore          Int?
+  evidencedWeight       Int
+  targetTotalWeight     Int
+  evidencedCount        Int
+  targetCompetencyCount Int
+  // Competencies outside the general four that produced evidence. The coverage
+  // floor turns on this: the general four alone reach roughly half the weight
+  // for any pair of roles and say nothing about role fit.
+  roleSpecificEvidenced Int    @default(0)
+  summary               String
+
+  createdAt DateTime @default(now())
+
+  scores CrossRoleCompetencyScore[]
+
+  // This constraint is the cache. Same interview, same role, same version of
+  // that role's criteria means the stored read is returned rather than another
+  // model call — which also keeps the number stable between viewings.
+  @@unique([sourceAssessmentId, targetCriteriaSetId, targetCriteriaVersion])
+  @@index([candidateId])
+}
+
+model CrossRoleCompetencyScore {
+  id              String        @id @default(cuid())
+  crossRoleReadId String
+  crossRoleRead   CrossRoleRead @relation(fields: [crossRoleReadId], references: [id], onDelete: Cascade)
+
+  competencyKey String
+  label         String
+  priority      String
+  orderIndex    Int
+  // transferred | rescored | not_evidenced
+  origin        String
+  // 0-10, null when not_evidenced. Float to match CompetencyScore.score, so a
+  // transferred value is bit-for-bit what the primary assessment holds.
+  score         Float?
+  confidence    String
+  evidenceQuote String?
+  note          String?
+
+  @@index([crossRoleReadId])
+}
+
 model Candidate {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -151,13 +229,18 @@ model Candidate {
   consentInterview Boolean   @default(false)
   consentRecording Boolean   @default(false)
   consentLinkCheck Boolean   @default(false)
+  // Per-purpose like the rest. Without it the compare control is unavailable
+  // and says so; a cross-role read is a use of their interview that they did
+  // not originally apply for.
+  consentCrossRole Boolean   @default(false)
   consentedAt      DateTime?
   consentPolicyVer String? // which privacy text they actually saw
 
-  resumes    Resume[]
-  interviews Interview[]
-  tags       CandidateTag[]
-  profile    CandidateProfile?
+  resumes        Resume[]
+  interviews     Interview[]
+  tags           CandidateTag[]
+  profile        CandidateProfile?
+  crossRoleReads CrossRoleRead[]
 }
 
 model Resume {
@@ -302,7 +385,8 @@ model Assessment {
   // Where the interview contradicted or failed to support the resume.
   resumeDeltas String // JSON
 
-  createdAt DateTime @default(now())
+  createdAt      DateTime        @default(now())
+  crossRoleReads CrossRoleRead[]
 }
 
 // Denormalised, searchable rollup. One row per candidate, rebuilt after each

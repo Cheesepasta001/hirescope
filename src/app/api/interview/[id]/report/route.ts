@@ -5,6 +5,7 @@ import { explainOverall, weightFor } from "@/lib/assess/scoring";
 import type { IntegrityReport } from "@/lib/integrity/signals";
 import type { InterviewPlan } from "@/lib/interview/plan";
 import { chooseTargets } from "@/lib/homework/generate";
+import { listCrossRoleReads } from "@/lib/assess/crossRoleStore";
 
 export const runtime = "nodejs";
 
@@ -28,7 +29,7 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
     where: { id },
     include: {
       assessment: true,
-      candidate: { select: { name: true } },
+      candidate: { select: { id: true, name: true, consentCrossRole: true } },
       resume: { include: { findings: { where: { candidateVisible: true } } } },
       homework: { include: { submission: { select: { submittedAt: true } } } },
     },
@@ -77,6 +78,11 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
       : targetCount > 0
         ? { generated: false, estimatedMinutes: null, competencyCount: targetCount, submitted: false }
         : null,
+    // The candidate sees what the manager sees. If a manager has read this
+    // interview against another role, the person it is about gets to read it too.
+    crossRoleReads: interview.candidate.consentCrossRole
+      ? await listCrossRoleReads(interview.candidate.id)
+      : [],
     competencies,
     strengths: readJson<string[]>(a.strengths, []),
     concerns: readJson<string[]>(a.concerns, []),
