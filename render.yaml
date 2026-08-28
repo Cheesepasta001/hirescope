@@ -13,8 +13,14 @@ services:
     # --include=dev is load-bearing. prisma, tsx, typescript, and tailwind are
     # all devDependencies and all are needed at BUILD time, so a host that sets
     # NODE_ENV=production would otherwise skip them and fail the build.
+    # db:postgres flips the datasource before anything reads the schema. The
+    # repo commits the SQLite provider so a fresh clone runs with no setup;
+    # this is the one place that needs Postgres, so this is where the flip
+    # belongs. Doing it the other way round meant every local checkout started
+    # broken with "Can't reach database server at host:5432".
     buildCommand: >-
       npm install --include=dev &&
+      npm run db:postgres &&
       npm run build &&
       npx prisma db push --accept-data-loss &&
       npm run db:seed:optional

@@ -25,26 +25,25 @@ made here — the system produces evidence and a ranking, and a person decides.
 cd hirescope && npm install && cp .env.example .env
 ```
 
-The committed schema targets Postgres, because that is what deploys. For
-zero-setup local dev, switch it to SQLite:
-
-```bash
-npm run db:sqlite
-```
-
-then set `DATABASE_URL="file:./dev.db"` and your `ANTHROPIC_API_KEY` in `.env`, and:
+Put your `ANTHROPIC_API_KEY` in `.env`, then:
 
 ```bash
 npm run db:push && npm run db:seed && npm run dev
 ```
+
+No database to install: the committed schema targets SQLite and `.env.example`
+already points at a local file. The deploy flips itself to Postgres in
+`render.yaml`, so nothing here needs switching.
 
 Open http://localhost:3000. The seed adds six invented candidates so manager
 search has something to return without spending any API calls.
 
 Manager passcode is `MANAGER_PASSCODE` in `.env`, default `letmein`.
 
-`npm run db:postgres` switches back. The provider is the one setting Prisma will
-not read from an env var, which is why it needs a script rather than config.
+`npm run db:postgres` and `npm run db:sqlite` flip the datasource. The provider
+is the one setting Prisma will not read from an env var, so it has to be a
+script — which is why the deploy runs the flip in its build command rather than
+leaving every clone to remember it.
 
 ### Try it
 
