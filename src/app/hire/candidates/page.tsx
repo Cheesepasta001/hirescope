@@ -39,8 +39,6 @@ const RECOMMENDATIONS = [
 ];
 
 export default function CandidateListPage() {
-  const [passcode, setPasscode] = useState("");
-  const [unlocked, setUnlocked] = useState(false);
   const [data, setData] = useState<Payload | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -62,9 +60,7 @@ export default function CandidateListPage() {
           body: JSON.stringify({ passcode: code, roleSlug, seniority, recommendation, minScore }),
         });
         const body = await readJsonResponse<Payload>(res, "Could not load candidates.");
-        sessionStorage.setItem("hs_passcode", code);
         setData(body);
-        setUnlocked(true);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Could not load candidates.");
       } finally {
@@ -74,17 +70,10 @@ export default function CandidateListPage() {
     [roleSlug, seniority, recommendation, minScore],
   );
 
-  // A passcode already entered on the search page carries over.
+  // The gate on /hire has already checked the passcode, so this loads straight
+  // away and reloads whenever a filter moves.
   useEffect(() => {
-    const saved = sessionStorage.getItem("hs_passcode") ?? "";
-    setPasscode(saved);
-    if (saved) void load(saved);
-    // Intentionally once on mount; filter changes are handled below.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    if (unlocked) void load(passcode);
+    void load(sessionStorage.getItem("hs_passcode") ?? "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roleSlug, seniority, recommendation, minScore]);
 
@@ -102,29 +91,8 @@ export default function CandidateListPage() {
         </div>
       </header>
 
-      {!unlocked && (
-        <form
-          className="panel p-5 max-w-md"
-          onSubmit={(e) => { e.preventDefault(); void load(passcode); }}
-        >
-          <label className="text-sm font-medium">Manager passcode</label>
-          <p className="mt-1 text-xs text-[var(--ink-faint)]">
-            Everything past this point is candidate personal data.
-          </p>
-          <div className="mt-3 flex gap-2">
-            <input
-              type="password" className="field" value={passcode} placeholder="Passcode"
-              onChange={(e) => setPasscode(e.target.value)}
-            />
-            <button className="btn" disabled={busy || !passcode}>
-              {busy ? "…" : "Open"}
-            </button>
-          </div>
-          {error && <p className="mt-3 text-sm text-[var(--bad)]">{error}</p>}
-        </form>
-      )}
 
-      {unlocked && data && (
+      {data && (
         <>
           <section className="panel p-4 flex flex-wrap items-end gap-4">
             <Filter label="Role">

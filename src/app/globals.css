@@ -72,9 +72,20 @@ button, label, legend, th,
   -webkit-font-smoothing: none;
 }
 
-h1, h2, h3 { color: var(--ink); }
-h1 { font-size: 2.4rem; line-height: 1.08; }
-h2 { font-size: 1.55rem; }
+/* The wordmark is a mark, not a heading, so it gets its own rule rather than
+   fighting utility classes: `text-[var(--accent)]` next to a `text-[<length>]`
+   on the same element is ambiguous — Tailwind cannot tell a colour from a size
+   — and neither utility ended up being generated. */
+.wordmark {
+  color: var(--accent);
+  font-size: clamp(3.6rem, 13vw, 7.5rem);
+  line-height: 0.9;
+  letter-spacing: 0.06em;
+}
+
+:where(h1, h2, h3) { color: var(--ink); }
+:where(h1) { font-size: 2.4rem; line-height: 1.08; }
+:where(h2) { font-size: 1.55rem; }
 
 /* Nothing in this language is round. */
 *, *::before, *::after { border-radius: 0 !important; }

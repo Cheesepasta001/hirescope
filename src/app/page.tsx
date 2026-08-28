@@ -1,59 +1,82 @@
 import Link from "next/link";
 
-const FLOW = [
-  { n: "01", t: "Resume in", d: "Parsed into structured claims, then checked against itself for gaps, overlaps, and skills that are listed but never described." },
-  { n: "02", t: "Interview", d: "Questions are generated from that specific resume, and each follow-up reacts to the answer that just arrived." },
-  { n: "03", t: "Evidence", d: "Every answer is appraised as it lands: which competency it spoke to, how deep it got, what it actually demonstrated." },
-  { n: "04", t: "Profile", d: "A skill diagram, a written assessment, and tags that separate what was demonstrated from what was merely claimed." },
+/**
+ * The front door. Two ways in, and nothing else on the page.
+ *
+ * Almost everyone arriving is one of two people: someone applying for a role,
+ * or someone hiring for one. The page used to open with a pitch and put those
+ * two paths below it as ordinary links, which meant both audiences had to read
+ * marketing copy before finding the thing they came for. The claims that were
+ * in that pitch — what the system will not do, and why — are on /governance,
+ * where they can be stated properly rather than in a hero.
+ */
+
+const DOORS = [
+  {
+    href: "/apply",
+    kicker: "Applicant",
+    title: "Start an Interview",
+    body:
+      "Upload your resume and pick a role. The questions come from your own history, "
+      + "and you can see and contest whatever is written about you afterwards.",
+    cta: "APPLY",
+    primary: true,
+  },
+  {
+    href: "/hire/search",
+    kicker: "Hiring team",
+    title: "Search Candidates",
+    body:
+      "Ask in plain English, or browse everyone assessed so far. Every score carries "
+      + "the answer it came from. Requires the manager passcode.",
+    cta: "SIGN IN",
+    primary: false,
+  },
 ];
 
 export default function Home() {
   return (
-    <div className="space-y-16">
-      <section className="pt-6">
-        <h1 className="text-4xl md:text-5xl font-semibold tracking-tight leading-tight max-w-3xl">
-          Interviews that actually read the resume.
+    <div className="py-6">
+      <div className="text-center">
+        <h1 className="wordmark">
+          HIRE<br />SCOPE
         </h1>
-        <p className="mt-5 text-[var(--ink-dim)] max-w-2xl leading-relaxed">
-          HireScope runs a structured, adaptive interview grounded in the candidate&apos;s own
-          history, appraises each answer as it arrives, and produces a searchable profile that
-          distinguishes demonstrated skill from asserted skill.
+        <p className="ui mt-6 text-sm text-[var(--ink-dim)]">
+          Every judgment leaves a record.
         </p>
-        <div className="mt-8 flex flex-wrap gap-3">
-          <Link href="/apply" className="btn">Start an interview</Link>
-          <Link href="/hire/search" className="btn-ghost">Search candidates</Link>
-        </div>
-      </section>
+      </div>
 
-      <section className="grid gap-4 md:grid-cols-4">
-        {FLOW.map((s) => (
-          <div key={s.n} className="panel p-5">
-            <div className="text-[var(--accent)] text-xs font-mono">{s.n}</div>
-            <div className="mt-2 font-medium">{s.t}</div>
-            <p className="mt-2 text-sm text-[var(--ink-dim)] leading-relaxed">{s.d}</p>
-          </div>
+      <div className="mt-12 grid gap-5 md:grid-cols-2">
+        {DOORS.map((d) => (
+          <Link
+            key={d.href}
+            href={d.href}
+            className={`panel group block p-7 transition-none ${
+              d.primary ? "pixel-frame--warm" : ""
+            }`}
+          >
+            <div className="ui text-[11px] uppercase tracking-[.2em] text-[var(--ink-faint)]">
+              {d.kicker}
+            </div>
+            <h2 className="mt-3 text-xl text-[var(--ink)] group-hover:text-[var(--accent)]">
+              {d.title}
+            </h2>
+            <p className="mt-4 text-sm leading-relaxed text-[var(--ink-dim)]">{d.body}</p>
+            <span className="ui mt-7 inline-block text-sm text-[var(--accent)]">
+              {d.cta} <span aria-hidden="true">▸</span>
+            </span>
+          </Link>
         ))}
-      </section>
+      </div>
 
-      <section className="panel p-6">
-        <h2 className="font-medium">What this system does not do</h2>
-        <p className="mt-3 text-sm text-[var(--ink-dim)] leading-relaxed max-w-3xl">
-          No face detection, gaze tracking, or emotion inference — inferring emotion from a
-          candidate in an employment context is prohibited under EU AI Act Art. 5(1)(f), and
-          face and eye biometrics trigger BIPA and CUBI consent regimes. No social media
-          scraping — assembling third-party information for a hiring decision creates FCRA
-          obligations and surfaces exactly the protected characteristics that must never touch
-          a decision.
-        </p>
-        <p className="mt-3 text-sm text-[var(--ink-dim)] leading-relaxed max-w-3xl">
-          Integrity is handled with behavioural signals instead: focus loss, paste events,
-          answer-timing shape, and register drift across answers. Those catch the real failure
-          mode, and none of them require processing anyone&apos;s body.
-        </p>
-        <Link href="/governance" className="mt-4 inline-block text-sm text-[var(--accent)]">
-          Read the governance notes →
+      <p className="mx-auto mt-12 max-w-2xl text-center text-sm leading-relaxed text-[var(--ink-dim)]">
+        An AI asks the questions and scores the answers against a standard the hiring team
+        wrote. A person makes the call — the record survives either way.{" "}
+        <Link href="/governance" className="text-[var(--accent)]">
+          What it will not do
         </Link>
-      </section>
+        .
+      </p>
     </div>
   );
 }

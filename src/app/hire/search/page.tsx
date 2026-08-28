@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { HireRoom } from "@/components/HireRoom";
 import { readJsonResponse } from "@/lib/http";
 
@@ -34,16 +34,11 @@ const EXAMPLES = [
   "Enterprise seller who knows their own conversion numbers",
 ];
 
-export default function ManagerPage() {
-  const [passcode, setPasscode] = useState("");
+export default function AiSearchPage() {
   const [query, setQuery] = useState("");
   const [result, setResult] = useState<Result | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setPasscode(sessionStorage.getItem("hs_passcode") ?? "");
-  }, []);
 
   async function run(q: string) {
     if (!q.trim()) return;
@@ -53,10 +48,11 @@ export default function ManagerPage() {
       const res = await fetch("/api/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: q, passcode }),
+        // The gate on /hire already checked this; the route checks it again,
+        // because a gate in the browser is not what protects the data.
+        body: JSON.stringify({ query: q, passcode: sessionStorage.getItem("hs_passcode") ?? "" }),
       });
       const data = await readJsonResponse<Result>(res, "Search failed.");
-      sessionStorage.setItem("hs_passcode", passcode);
       setResult(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Search failed.");
@@ -103,16 +99,12 @@ export default function ManagerPage() {
         />
       </div>
 
-      <div className="mt-6 grid gap-3 sm:grid-cols-[1fr_auto_auto]">
+      <div className="mt-6 grid gap-3 sm:grid-cols-[1fr_auto]">
         <input
           className="field" placeholder="Software engineer who has experience with PyTorch"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") void run(query); }}
-        />
-        <input
-          className="field sm:w-40" type="password" placeholder="Passcode"
-          value={passcode} onChange={(e) => setPasscode(e.target.value)}
         />
         <button className="btn" onClick={() => void run(query)} disabled={busy || !query.trim()}>
           {busy ? "Searching…" : "Search"}
