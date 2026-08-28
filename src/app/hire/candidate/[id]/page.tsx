@@ -120,7 +120,7 @@ export default function CandidateReport({ params }: { params: Promise<{ id: stri
     return (
       <div className="panel border-[var(--bad)] p-5">
         <p className="text-sm text-[var(--bad)]">{error}</p>
-        <Link href="/manager" className="mt-3 inline-block text-sm text-[var(--accent)]">← Back to search</Link>
+        <Link href="/hire/search" className="mt-3 inline-block text-sm text-[var(--accent)]">← Back to AI Search</Link>
       </div>
     );
   }
@@ -134,8 +134,8 @@ export default function CandidateReport({ params }: { params: Promise<{ id: stri
   return (
     <div className="space-y-8">
       <div className="flex flex-wrap items-center gap-4 text-sm">
-        <Link href="/manager/candidates" className="text-[var(--accent)]">← All candidates</Link>
-        <Link href="/manager" className="text-[var(--ink-faint)] hover:text-[var(--ink)]">Search</Link>
+        <Link href="/hire/candidates" className="text-[var(--accent)]">← All Candidates</Link>
+        <Link href="/hire/search" className="text-[var(--ink-faint)] hover:text-[var(--ink)]">AI Search</Link>
         {/* The record of what was asked, said, and applied — for the hiring file. */}
         <a
           href={`/api/interview/${interview.id}/export`}

@@ -8,7 +8,7 @@ import type { RadarPoint } from "@/components/SkillRadar";
 /**
  * The candidate list — every assessed candidate as a card, ranked by score.
  *
- * This is a way to *browse*, alongside the natural-language search on /manager
+ * This is a way to *browse*, alongside the natural-language search on /hire/search
  * rather than instead of it. Search answers "who has done X"; this answers "who
  * is here", which is the question a recruiter with twenty open applications
  * actually starts from.
@@ -100,7 +100,7 @@ export default function CandidateListPage() {
             not decide. Nobody is hidden here because they scored badly.
           </p>
         </div>
-        <Link href="/manager" className="btn-ghost text-sm">Search instead</Link>
+        <Link href="/hire/search" className="btn-ghost text-sm">Search instead</Link>
       </header>
 
       {!unlocked && (
@@ -219,7 +219,7 @@ export default function CandidateListPage() {
                   </span>
                   <CandidateCard
                     candidate={{ ...c, competencies: c.competencies as RadarPoint[] }}
-                    href={`/manager/candidate/${c.candidateId}`}
+                    href={`/hire/candidate/${c.candidateId}`}
                   />
                 </div>
               ))}

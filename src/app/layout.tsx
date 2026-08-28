@@ -31,18 +31,14 @@ export default function RootLayout({
             <Link href="/" className="font-semibold tracking-tight text-lg">
               Hire<span className="text-[var(--accent)]">Scope</span>
             </Link>
+            {/* Three doors, not four. Search and Candidates were two ways of
+                reading the same table, so they sit behind Hire together. */}
             <nav className="flex gap-5 text-sm text-[var(--ink-dim)]">
-              <Link href="/apply" className="hover:text-[var(--ink)]">
+              <Link href="/apply" className="hover:text-[var(--ink)]" title="이력서 업로드 후 면접">
                 Apply
               </Link>
-              <Link href="/manager" className="hover:text-[var(--ink)]">
-                Search
-              </Link>
-              <Link
-                href="/manager/candidates"
-                className="hover:text-[var(--ink)]"
-              >
-                Candidates
+              <Link href="/hire/search" className="hover:text-[var(--ink)]" title="지원자 찾기">
+                Hire
               </Link>
               <Link href="/governance" className="hover:text-[var(--ink)]">
                 Governance

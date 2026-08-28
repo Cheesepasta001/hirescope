@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { HireRoom } from "@/components/HireRoom";
 
 type Hit = {
   candidateId: string;
@@ -75,7 +76,32 @@ export default function ManagerPage() {
             actually evidenced, not on what a resume asserted.
           </p>
         </div>
-        <Link href="/manager/candidates" className="btn-ghost text-sm">Browse all candidates</Link>
+        <Link href="/hire/candidates" className="btn-ghost text-sm">Browse all candidates</Link>
+      </div>
+
+      {/* The room is a reading of the result, not decoration beside it: the
+          chairs hold the current top matches, and an empty chair means the
+          query genuinely found fewer people rather than that the row ran out
+          of space. Scores sit under the chairs, so it reads as a ranking. */}
+      <div className="mt-6">
+        <HireRoom
+          searching={busy}
+          occupants={(result?.hits ?? []).map((h, i) => ({
+            name: h.name,
+            // The match score, not the overall score: the chairs are ordered by
+            // match, so labelling them with the overall made the row look
+            // unsorted. The overall still leads each result card below.
+            score: h.matchScore,
+            top: i === 0,
+          }))}
+          label={
+            busy
+              ? "검색 중입니다"
+              : result
+                ? `검색 결과 상위 ${Math.min(result.hits.length, 5)}명이 자리에 앉아 있습니다`
+                : "빈 면접실입니다. 검색하면 후보가 자리에 앉습니다"
+          }
+        />
       </div>
 
       <div className="mt-6 grid gap-3 sm:grid-cols-[1fr_auto_auto]">
@@ -131,7 +157,7 @@ export default function ManagerPage() {
             </p>
           ) : (
             result.hits.map((h) => (
-              <Link key={h.candidateId} href={`/manager/candidate/${h.candidateId}`}
+              <Link key={h.candidateId} href={`/hire/candidate/${h.candidateId}`}
                 className="panel block p-5 hover:border-[var(--accent-dim)] transition-colors">
                 <div className="flex items-start justify-between gap-4">
                   <div>
