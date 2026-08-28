@@ -21,7 +21,9 @@
     "demo:record": "tsx scripts/record-demo.ts",
     "demo:cards": "tsx scripts/demo-cards.ts",
     "demo:resume": "tsx scripts/demo-resume.ts",
-    "demo:live": "tsx scripts/demo-seed-live.ts"
+    "demo:live": "tsx scripts/demo-seed-live.ts",
+    "demo:compare": "tsx scripts/demo-compare.ts",
+    "demo:onepager": "tsx scripts/demo-onepager.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
