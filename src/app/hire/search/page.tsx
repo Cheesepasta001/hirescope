@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { HireRoom } from "@/components/HireRoom";
+import { readJsonResponse } from "@/lib/http";
 
 type Hit = {
   candidateId: string;
@@ -54,8 +55,7 @@ export default function ManagerPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query: q, passcode }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Search failed.");
+      const data = await readJsonResponse<Result>(res, "Search failed.");
       sessionStorage.setItem("hs_passcode", passcode);
       setResult(data);
     } catch (err) {
@@ -76,7 +76,6 @@ export default function ManagerPage() {
             actually evidenced, not on what a resume asserted.
           </p>
         </div>
-        <Link href="/hire/candidates" className="btn-ghost text-sm">Browse all candidates</Link>
       </div>
 
       {/* The room is a reading of the result, not decoration beside it: the

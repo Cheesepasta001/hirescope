@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
 import { CandidateCard, type CardCandidate } from "@/components/CandidateCard";
 import type { RadarPoint } from "@/components/SkillRadar";
+import { readJsonResponse } from "@/lib/http";
 
 /**
  * The candidate list — every assessed candidate as a card, ranked by score.
@@ -20,7 +21,7 @@ type Listed = CardCandidate & {
   assessedAt: string;
 };
 
-type Response = {
+type Payload = {
   candidates: Listed[];
   shown: number;
   totalUnfiltered: number;
@@ -40,7 +41,7 @@ const RECOMMENDATIONS = [
 export default function CandidateListPage() {
   const [passcode, setPasscode] = useState("");
   const [unlocked, setUnlocked] = useState(false);
-  const [data, setData] = useState<Response | null>(null);
+  const [data, setData] = useState<Payload | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,8 +61,7 @@ export default function CandidateListPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ passcode: code, roleSlug, seniority, recommendation, minScore }),
         });
-        const body = await res.json();
-        if (!res.ok) throw new Error(body.error ?? "Could not load candidates.");
+        const body = await readJsonResponse<Payload>(res, "Could not load candidates.");
         sessionStorage.setItem("hs_passcode", code);
         setData(body);
         setUnlocked(true);
@@ -100,7 +100,6 @@ export default function CandidateListPage() {
             not decide. Nobody is hidden here because they scored badly.
           </p>
         </div>
-        <Link href="/hire/search" className="btn-ghost text-sm">Search instead</Link>
       </header>
 
       {!unlocked && (

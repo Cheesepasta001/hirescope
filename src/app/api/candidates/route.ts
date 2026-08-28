@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { describeApiError } from "@/lib/claude";
 import { db, readJson } from "@/lib/db";
 import type { CompetencyScore } from "@/lib/assess/score";
 import { listRoles } from "@/lib/criteria/load";
@@ -27,6 +28,7 @@ export const dynamic = "force-dynamic";
 const MAX_LIMIT = 200;
 
 export async function POST(request: Request) {
+  try {
   const body = (await request.json().catch(() => ({}))) as {
     passcode?: string;
     roleSlug?: string;
@@ -110,4 +112,11 @@ export async function POST(request: Request) {
       .filter((r) => !r.error)
       .map((r) => ({ roleSlug: r.roleSlug, roleTitle: r.roleTitle })),
   });
+  } catch (error) {
+    // Without this, an unreachable database escapes as an unhandled throw, Next
+    // answers with an empty 500, and the browser reports a JSON parse error
+    // instead of the connection failure. The cause has to survive the trip.
+    const { status, message } = describeApiError(error);
+    return NextResponse.json({ error: message }, { status });
+  }
 }

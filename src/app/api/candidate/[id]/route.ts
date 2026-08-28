@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { describeApiError } from "@/lib/claude";
 import { db, readJson } from "@/lib/db";
 import type { CompetencyScore } from "@/lib/assess/score";
 import { explainOverall, weightFor } from "@/lib/assess/scoring";
@@ -8,6 +9,7 @@ export const runtime = "nodejs";
 
 /** The full candidate report a manager reads before deciding anything. */
 export async function GET(request: Request, ctx: { params: Promise<{ id: string }> }) {
+  try {
   const { id } = await ctx.params;
 
   const passcode = new URL(request.url).searchParams.get("passcode");
@@ -170,4 +172,8 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
       questionType: t.questionType,
     })),
   });
+  } catch (error) {
+    const { status, message } = describeApiError(error);
+    return NextResponse.json({ error: message }, { status });
+  }
 }
