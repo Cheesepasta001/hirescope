@@ -19,7 +19,9 @@
     "criteria:check": "tsx scripts/check-criteria.ts",
     "purge:abandoned": "tsx scripts/purge-abandoned.ts",
     "demo:record": "tsx scripts/record-demo.ts",
-    "demo:cards": "tsx scripts/demo-cards.ts"
+    "demo:cards": "tsx scripts/demo-cards.ts",
+    "demo:resume": "tsx scripts/demo-resume.ts",
+    "demo:live": "tsx scripts/demo-seed-live.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",

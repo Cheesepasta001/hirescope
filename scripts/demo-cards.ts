@@ -18,19 +18,19 @@ const CARDS: Card[] = [
   {
     file: "title.png",
     kicker: "HireScope",
-    title: "Interviews that read the resume first",
-    sub: "Resume-grounded questions, evidence-backed scores, a searchable pool",
+    title: "이력서를 먼저 읽는 면접",
+    sub: "이력서에서 나온 질문, 근거가 남는 평가, 검색되는 인재 풀",
   },
   {
     file: "wait.png",
-    kicker: "Compressed",
-    title: "About a minute of real processing",
-    sub: "Reading the resume, checking it against itself, building the interview plan",
+    kicker: "빨리 감기",
+    title: "실제로는 약 1분이 걸립니다",
+    sub: "이력서 분석 · 자기모순 검증 · 면접 계획 수립",
   },
   {
     file: "end.png",
-    kicker: "Every screen was live",
-    title: "Nothing here was mocked up",
+    kicker: "모든 화면은 실제 동작입니다",
+    title: "연출하거나 꾸며낸 화면은 없습니다",
     sub: "github.com/jaewoo001/hirescope",
   },
 ];
@@ -38,13 +38,13 @@ const CARDS: Card[] = [
 const html = (c: Card) => `<!doctype html><html><head><meta charset="utf-8">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@500&family=Noto+Sans+KR:wght@400;500;700&display=swap">
 <style>
   html,body{margin:0;height:100%;}
   body{
     background:#0B0D10;
     color:#E8ECF1;
-    font-family:Archivo,system-ui,sans-serif;
+    font-family:"Noto Sans KR",Archivo,system-ui,sans-serif;
     display:flex;align-items:center;justify-content:center;
     height:800px;width:1280px;
   }
