@@ -17,7 +17,9 @@
     "db:sqlite": "node scripts/db-provider.mjs sqlite",
     "db:seed:optional": "node scripts/seed-optional.mjs",
     "criteria:check": "tsx scripts/check-criteria.ts",
-    "purge:abandoned": "tsx scripts/purge-abandoned.ts"
+    "purge:abandoned": "tsx scripts/purge-abandoned.ts",
+    "demo:record": "tsx scripts/record-demo.ts",
+    "demo:cards": "tsx scripts/demo-cards.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
@@ -34,6 +36,7 @@
     "@types/node": "^22.10.7",
     "@types/react": "^19.0.7",
     "@types/react-dom": "^19.0.3",
+    "playwright": "^1.62.1",
     "prisma": "^6.3.0",
     "tailwindcss": "^4.0.0",
     "tsx": "^4.19.2",
