@@ -2,6 +2,7 @@
 
 import { use, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { InterviewRoom } from "@/components/InterviewRoom";
 
 type Msg = { role: "interviewer" | "candidate"; text: string; questionType?: string | null };
 
@@ -18,6 +19,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   const [progress, setProgress] = useState({ asked: 0, budget: 12 });
   const [isFinal, setIsFinal] = useState(false);
   const [role, setRole] = useState("");
+  const [candidateName, setCandidateName] = useState("");
   // Set when the candidate is returning to a session they walked away from.
   const [resumeOffer, setResumeOffer] = useState<{ purgeAfter: string | null } | null>(null);
   const [discarding, setDiscarding] = useState(false);
@@ -54,6 +56,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
         setMessages(data.turns);
         setProgress({ asked: data.questionsAsked, budget: data.questionBudget });
         setRole(`${data.seniority} ${data.roleTitle}`);
+        setCandidateName(data.candidateName ?? "");
         if (data.resumeOffered) {
           setResumeOffer({ purgeAfter: data.purgeAfter ?? null });
         }
@@ -197,8 +200,23 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
           Question {Math.min(progress.asked, progress.budget)} of {progress.budget}
         </span>
       </div>
-      <div className="mt-2 h-1 rounded bg-[var(--panel-2)] overflow-hidden">
+      <div className="mt-2 h-1 bg-[var(--panel-2)] overflow-hidden">
         <div className="h-full bg-[var(--accent)] transition-all duration-500" style={{ width: `${pct}%` }} />
+      </div>
+
+      {/* The interviewer animates precisely while the model is composing, which
+          turns the one unavoidable wait in this app into its liveliest moment. */}
+      <div className="mt-6">
+        <InterviewRoom
+          candidateName={candidateName || "candidate"}
+          started={messages.length > 0}
+          speaking={thinking}
+          label={
+            thinking
+              ? "면접관이 다음 질문을 생각하고 있습니다"
+              : "책상 건너편에 면접관이 앉아 있습니다"
+          }
+        />
       </div>
 
       <div className="mt-8 space-y-5">

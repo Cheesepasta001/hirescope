@@ -8,3 +8,4 @@ uploads/
 tsconfig.tsbuildinfo
 *.tsbuildinfo
 demo/
+dev.log

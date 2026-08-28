@@ -15,6 +15,16 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
+      <head>
+        {/* VT323 carries the app's chrome. Google Fonts is the one external
+            host the artifact CSP admits, and it is what DEMO uses. */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=VT323&display=swap"
+          rel="stylesheet"
+        />
+      </head>
       <body className="min-h-screen">
         <header className="border-b border-[var(--border)]">
           <div className="mx-auto max-w-6xl px-6 py-4 flex items-center justify-between">
